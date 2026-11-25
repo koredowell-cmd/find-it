@@ -7,6 +7,7 @@ import AuthModal from '@/components/AuthModal';
 import PostAdModal from '@/components/PostAdModal';
 import EditAdModal from '@/components/EditAdModal';
 import ListingDetailModal, { ListingWithSeller } from '@/components/ListingDetailModal';
+import SellerStorefrontModal from '@/components/SellerStorefrontModal';
 import MessagesInbox from '@/components/MessagesInbox';
 import {
   Search,
@@ -30,6 +31,8 @@ import {
   RefreshCw,
   CheckCircle2,
   RotateCcw,
+  Heart,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 export default function FindItHome() {
@@ -42,8 +45,16 @@ export default function FindItHome() {
   const [selectedVertical, setSelectedVertical] = useState<'all' | 'product' | 'service' | 'property'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Smart Sort & Budget Filter state
+  const [sortBy, setSortBy] = useState<'newest' | 'price_asc' | 'price_desc'>('newest');
+  const [showBudgetFilter, setShowBudgetFilter] = useState(false);
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+
   const [listings, setListings] = useState<ListingWithSeller[]>([]);
   const [myListings, setMyListings] = useState<ListingWithSeller[]>([]);
+  const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [savedListings, setSavedListings] = useState<ListingWithSeller[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -53,6 +64,7 @@ export default function FindItHome() {
   const [showPostModal, setShowPostModal] = useState(false);
   const [editingListing, setEditingListing] = useState<any | null>(null);
   const [selectedListing, setSelectedListing] = useState<ListingWithSeller | null>(null);
+  const [storefrontSellerId, setStorefrontSellerId] = useState<string | null>(null);
 
   // Edit Profile state
   const [editingProfile, setEditingProfile] = useState(false);
@@ -98,6 +110,34 @@ export default function FindItHome() {
     setMyListings((data as any) || []);
   }, []);
 
+  const fetchSavedListings = useCallback(async (uid: string) => {
+    const { data } = await supabase
+      .from('saved_listings')
+      .select(`
+        listing_id,
+        listings (
+          *,
+          profiles (
+            full_name,
+            whatsapp_number,
+            account_type,
+            is_verified
+          )
+        )
+      `)
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false });
+
+    if (data) {
+      const ids = data.map((row: any) => row.listing_id);
+      const items = data
+        .map((row: any) => row.listings)
+        .filter((item: any) => item && item.status === 'active');
+      setSavedIds(ids);
+      setSavedListings(items);
+    }
+  }, []);
+
   const loadSession = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     const currentUser = session?.user ?? null;
@@ -139,13 +179,16 @@ export default function FindItHome() {
       }
 
       fetchMyListings(currentUser.id);
+      fetchSavedListings(currentUser.id);
       fetchUnreadCount(currentUser.id);
     } else {
       setProfile(null);
       setMyListings([]);
+      setSavedIds([]);
+      setSavedListings([]);
       setUnreadCount(0);
     }
-  }, [fetchMyListings, fetchUnreadCount]);
+  }, [fetchMyListings, fetchSavedListings, fetchUnreadCount]);
 
   const fetchListings = useCallback(async () => {
     setLoadingFeed(true);
@@ -160,8 +203,7 @@ export default function FindItHome() {
           is_verified
         )
       `)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false });
+      .eq('status', 'active');
 
     if (selectedRegion !== 'All Ghana') {
       query = query.eq('city', selectedRegion);
@@ -175,11 +217,25 @@ export default function FindItHome() {
     if (searchQuery.trim()) {
       query = query.ilike('title', `%${searchQuery.trim()}%`);
     }
+    if (minPrice && !isNaN(Number(minPrice))) {
+      query = query.gte('price', Number(minPrice));
+    }
+    if (maxPrice && !isNaN(Number(maxPrice))) {
+      query = query.lte('price', Number(maxPrice));
+    }
+
+    if (sortBy === 'price_asc') {
+      query = query.order('price', { ascending: true });
+    } else if (sortBy === 'price_desc') {
+      query = query.order('price', { ascending: false });
+    } else {
+      query = query.order('created_at', { ascending: false });
+    }
 
     const { data } = await query;
     setListings((data as any) || []);
     setLoadingFeed(false);
-  }, [selectedRegion, selectedCity, selectedVertical, searchQuery]);
+  }, [selectedRegion, selectedCity, selectedVertical, searchQuery, minPrice, maxPrice, sortBy]);
 
   const fetchRequests = useCallback(async () => {
     let query = supabase
@@ -202,6 +258,25 @@ export default function FindItHome() {
     setRequests(data || []);
   }, [selectedRegion]);
 
+  // Open shared ad link (?ad=<id>) automatically if present in URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sharedAdId = params.get('ad');
+    if (sharedAdId) {
+      supabase
+        .from('listings')
+        .select(`*, profiles ( full_name, whatsapp_number, account_type, is_verified )`)
+        .eq('id', sharedAdId)
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            setSelectedListing(data as any);
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        });
+    }
+  }, []);
+
   useEffect(() => {
     loadSession();
     const { data: authListener } = supabase.auth.onAuthStateChange(() => {
@@ -210,7 +285,6 @@ export default function FindItHome() {
     return () => authListener.subscription.unsubscribe();
   }, [loadSession]);
 
-  // Real-time listener for bottom nav unread badge
   useEffect(() => {
     if (!user?.id) return;
 
@@ -237,6 +311,31 @@ export default function FindItHome() {
     fetchListings();
     fetchRequests();
   }, [fetchListings, fetchRequests]);
+
+  const handleToggleSave = async (listingId: string) => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
+    const alreadySaved = savedIds.includes(listingId);
+    if (alreadySaved) {
+      setSavedIds((prev) => prev.filter((id) => id !== listingId));
+      setSavedListings((prev) => prev.filter((item) => item.id !== listingId));
+      await supabase
+        .from('saved_listings')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('listing_id', listingId);
+    } else {
+      setSavedIds((prev) => [...prev, listingId]);
+      await supabase.from('saved_listings').insert({
+        user_id: user.id,
+        listing_id: listingId,
+      });
+      fetchSavedListings(user.id);
+    }
+  };
 
   const handleManualRefresh = async () => {
     setRefreshing(true);
@@ -338,6 +437,8 @@ export default function FindItHome() {
     setActiveTab('explore');
   };
 
+  const hasActiveBudget = Boolean(minPrice || maxPrice);
+
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
       {/* Top App Header */}
@@ -395,19 +496,63 @@ export default function FindItHome() {
           </div>
         </div>
 
-        {/* Search & Vertical Filter Bar */}
+        {/* Search, Vertical Filter & Sort/Budget Bar */}
         {activeTab === 'explore' && (
           <div className="max-w-3xl mx-auto px-4 pb-3 space-y-2.5">
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-              <input
-                type="text"
-                placeholder="Search phones, apartments, barbers, cars..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-100 border border-transparent focus:bg-white focus:border-emerald-500 text-sm focus:outline-none transition"
-              />
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                <input
+                  type="text"
+                  placeholder="Search phones, apartments, barbers, cars..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-100 border border-transparent focus:bg-white focus:border-emerald-500 text-sm focus:outline-none transition"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowBudgetFilter(!showBudgetFilter)}
+                className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-1 shrink-0 transition ${
+                  showBudgetFilter || hasActiveBudget
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                    : 'bg-slate-100 border-transparent text-slate-700 hover:bg-slate-200'
+                }`}
+                title="Sort & Price Filter"
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+              </button>
             </div>
+
+            {/* Collapsible Sort & Budget Bar */}
+            {showBudgetFilter && (
+              <div className="p-3 rounded-2xl bg-slate-100/90 border border-slate-200/80 grid grid-cols-3 gap-2">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="px-2.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
+                >
+                  <option value="newest">Newest First</option>
+                  <option value="price_asc">Price: Low → High</option>
+                  <option value="price_desc">Price: High → Low</option>
+                </select>
+                <input
+                  type="number"
+                  placeholder="Min ₵"
+                  value={minPrice}
+                  onChange={(e) => setMinPrice(e.target.value)}
+                  className="px-2.5 py-2 rounded-xl border border-slate-200 text-xs bg-white"
+                />
+                <input
+                  type="number"
+                  placeholder="Max ₵"
+                  value={maxPrice}
+                  onChange={(e) => setMaxPrice(e.target.value)}
+                  className="px-2.5 py-2 rounded-xl border border-slate-200 text-xs bg-white"
+                />
+              </div>
+            )}
 
             <div className="flex gap-2 overflow-x-auto no-scrollbar">
               {[
@@ -456,7 +601,7 @@ export default function FindItHome() {
                 </div>
                 <h3 className="font-bold text-slate-900">No ads found here yet</h3>
                 <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                  Be the first to post a product, service, or property in{' '}
+                  Try clearing your price filter or be the first to post in{' '}
                   {selectedCity !== 'All Cities' ? selectedCity : selectedRegion}!
                 </p>
                 <button
@@ -475,6 +620,7 @@ export default function FindItHome() {
                   const locationLabel = item.neighborhood
                     ? `${item.city.replace(' Region', '')} - ${item.neighborhood}`
                     : item.city;
+                  const isSaved = savedIds.includes(item.id);
 
                   return (
                     <div
@@ -504,6 +650,22 @@ export default function FindItHome() {
                             {item.condition}
                           </span>
                         )}
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleSave(item.id);
+                          }}
+                          className="absolute top-2 right-2 p-1.5 rounded-full bg-white/90 backdrop-blur-xs text-slate-700 hover:scale-105 transition shadow-xs"
+                          title={isSaved ? 'Saved' : 'Save Ad'}
+                        >
+                          <Heart
+                            className={`w-3.5 h-3.5 ${
+                              isSaved ? 'fill-rose-600 text-rose-600' : 'text-slate-600'
+                            }`}
+                          />
+                        </button>
                       </div>
 
                       <div className="p-3 flex-1 flex flex-col justify-between">
@@ -695,7 +857,7 @@ export default function FindItHome() {
           </div>
         )}
 
-        {/* TAB 3: PROFESSIONAL ACCOUNT & LISTING MANAGEMENT */}
+        {/* TAB 3: ACCOUNT, INBOX, SAVED ADS & LISTING MANAGEMENT */}
         {activeTab === 'account' && (
           <div className="space-y-5">
             {!user ? (
@@ -705,7 +867,7 @@ export default function FindItHome() {
                 </div>
                 <h2 className="text-lg font-bold text-slate-900">Sign in to Find It</h2>
                 <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                  Create a free individual or business account to post ads, negotiate with buyers, and manage your listings.
+                  Create a free individual or business account to post ads, save favorites, negotiate with buyers, and manage your listings.
                 </p>
                 <button
                   type="button"
@@ -728,11 +890,19 @@ export default function FindItHome() {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
+                          onClick={() => setStorefrontSellerId(user.id)}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold flex items-center gap-1.5 transition"
+                        >
+                          <Store className="w-3.5 h-3.5" />
+                          My Shop
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setEditingProfile(!editingProfile)}
                           className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
-                          {editingProfile ? 'Cancel' : 'Edit Profile'}
+                          {editingProfile ? 'Cancel' : 'Edit'}
                         </button>
                         <button
                           type="button"
@@ -752,13 +922,7 @@ export default function FindItHome() {
                             {profile?.full_name}
                           </h2>
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                            {profile?.account_type === 'business' ? (
-                              <>
-                                <Store className="w-3 h-3" /> Business
-                              </>
-                            ) : (
-                              'Member'
-                            )}
+                            {profile?.account_type === 'business' ? 'Business' : 'Member'}
                           </span>
                         </div>
 
@@ -858,6 +1022,56 @@ export default function FindItHome() {
                   onUnreadChange={(count) => setUnreadCount(count)}
                 />
 
+                {/* Saved / Wishlist Ads */}
+                {savedListings.length > 0 && (
+                  <div className="space-y-2.5">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 px-1 flex items-center gap-1.5">
+                      <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
+                      Saved Ads ({savedListings.length})
+                    </h3>
+                    <div className="space-y-2">
+                      {savedListings.map((savedAd) => {
+                        const thumb = savedAd.media_urls?.[0];
+                        return (
+                          <div
+                            key={savedAd.id}
+                            className="p-3 bg-white rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3"
+                          >
+                            <div
+                              onClick={() => setSelectedListing(savedAd)}
+                              className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                            >
+                              <div className="w-11 h-11 rounded-xl bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
+                                {thumb ? (
+                                  <img src={thumb} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <Package className="w-5 h-5 text-slate-400" />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="font-bold text-xs text-slate-900 truncate">
+                                  {savedAd.title}
+                                </p>
+                                <p className="text-xs font-extrabold text-emerald-700">
+                                  ₵{Number(savedAd.price).toLocaleString()}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleSave(savedAd.id)}
+                              className="p-2 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 transition"
+                              title="Remove from Saved"
+                            >
+                              <Heart className="w-4 h-4 fill-rose-600" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Seller Listing Management (Active & Sold Ads) */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between px-1">
@@ -925,7 +1139,6 @@ export default function FindItHome() {
                             </div>
                           </div>
 
-                          {/* Management Action Bar: Edit | Mark Sold/Relist | Delete */}
                           <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
                             <button
                               type="button"
@@ -1067,9 +1280,26 @@ export default function FindItHome() {
       <ListingDetailModal
         listing={selectedListing}
         currentUserId={user?.id || null}
+        isSaved={selectedListing ? savedIds.includes(selectedListing.id) : false}
+        onToggleSave={handleToggleSave}
+        onOpenStorefront={(sellerId) => {
+          setSelectedListing(null);
+          setStorefrontSellerId(sellerId);
+        }}
         onClose={() => setSelectedListing(null)}
         onRequireAuth={() => {
           setSelectedListing(null);
+          setShowAuthModal(true);
+        }}
+      />
+
+      <SellerStorefrontModal
+        sellerId={storefrontSellerId}
+        currentUserId={user?.id || null}
+        onClose={() => setStorefrontSellerId(null)}
+        onSelectListing={(item) => setSelectedListing(item)}
+        onRequireAuth={() => {
+          setStorefrontSellerId(null);
           setShowAuthModal(true);
         }}
       />
