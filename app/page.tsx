@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import AuthModal from '@/components/AuthModal';
 import PostAdModal from '@/components/PostAdModal';
 import ListingDetailModal, { ListingWithSeller } from '@/components/ListingDetailModal';
+import MessagesInbox from '@/components/MessagesInbox';
 import {
   Search,
   MapPin,
@@ -497,6 +498,8 @@ export default function FindItHome() {
                     <LogOut className="w-4 h-4" />
                   </button>
                 </div>
+
+                <MessagesInbox currentUserId={user.id} />
 
                 <div className="space-y-3">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 px-1">
