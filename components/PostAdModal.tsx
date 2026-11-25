@@ -46,9 +46,49 @@ const CATEGORIES = {
   ],
 };
 
+const PRICING_OPTIONS = {
+  product: [
+    { value: 'one-time', label: 'One-Time / Fixed Price' },
+    { value: 'starting at', label: 'Starting Price' },
+    { value: 'per unit', label: 'Per Item / Wholesale Unit' },
+  ],
+  service: [
+    { value: 'starting at', label: 'Starting At (Base Rate)' },
+    { value: 'per hour', label: 'Per Hour' },
+    { value: 'per day', label: 'Per Day' },
+    { value: 'per job', label: 'Per Session / Full Job' },
+  ],
+  property: [
+    { value: 'per month', label: 'Per Month' },
+    { value: 'per year', label: 'Per Year (Rent Advance)' },
+    { value: 'per night', label: 'Per Night (Short-Stay)' },
+    { value: 'one-time', label: 'Outright Sale (Full Price)' },
+  ],
+};
+
+const VERTICAL_COPY = {
+  product: {
+    titlePlaceholder: 'e.g. iPhone 14 Pro Max 256GB Deep Purple',
+    descLabel: 'Product Specifications & Details',
+    descPlaceholder:
+      'Describe brand, storage/size, battery health, any faults, included accessories, and delivery availability...',
+  },
+  service: {
+    titlePlaceholder: 'e.g. Professional Bridal & Event Makeup Artist',
+    descLabel: 'Service Scope & Availability',
+    descPlaceholder:
+      'Describe what is included in your service, years of experience, home-service or shop location, and working days/hours...',
+  },
+  property: {
+    titlePlaceholder: 'e.g. Neat 2-Bedroom Self-Contained Apartment',
+    descLabel: 'Property Features & Rent Terms',
+    descPlaceholder:
+      'Describe number of rooms, self-contained or shared compound, water & ECG prepaid meter status, road access, and advance required (e.g. 1 or 2 years)...',
+  },
+};
+
 const CONDITIONS = ['Brand New', 'Foreign Used (UK/US)', 'Ghana Used', 'Refurbished'];
 
-// Compress images to max 1200px WebP/JPEG (~150-250KB) for fast mobile uploads
 async function compressImage(file: File): Promise<File> {
   if (!file.type.startsWith('image/')) return file;
 
@@ -128,7 +168,7 @@ export default function PostAdModal({
   const [description, setDescription] = useState('');
   const [condition, setCondition] = useState(CONDITIONS[1]);
   const [price, setPrice] = useState('');
-  const [pricePeriod, setPricePeriod] = useState('one-time');
+  const [pricePeriod, setPricePeriod] = useState(PRICING_OPTIONS.product[0].value);
   const [isNegotiable, setIsNegotiable] = useState(true);
   const [region, setRegion] = useState(validRegion);
   const [city, setCity] = useState(validCity);
@@ -144,7 +184,7 @@ export default function PostAdModal({
   const handleVerticalChange = (newVertical: 'product' | 'service' | 'property') => {
     setVertical(newVertical);
     setCategory(CATEGORIES[newVertical][0]);
-    setPricePeriod(newVertical === 'property' ? 'per month' : 'one-time');
+    setPricePeriod(PRICING_OPTIONS[newVertical][0].value);
   };
 
   const handleRegionChange = (newRegion: string) => {
@@ -234,6 +274,8 @@ export default function PostAdModal({
       setStatusText('');
     }
   };
+
+  const activeCopy = VERTICAL_COPY[vertical];
 
   return (
     <div
@@ -379,29 +421,25 @@ export default function PostAdModal({
             <input
               type="text"
               required
-              placeholder={
-                vertical === 'product'
-                  ? 'e.g. iPhone 14 Pro Max 256GB Deep Purple'
-                  : vertical === 'service'
-                  ? 'e.g. Professional Bridal & Event Makeup Artist'
-                  : 'e.g. Neat 2-Bedroom Self-Contained Apartment'
-              }
+              placeholder={activeCopy.titlePlaceholder}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 
-          {/* Price & Period */}
+          {/* Tailored Price & Period */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Price (₵ GHS)</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                {vertical === 'service' ? 'Rate / Fee (₵ GHS)' : 'Price (₵ GHS)'}
+              </label>
               <input
                 type="number"
                 required
                 min="0"
                 step="0.01"
-                placeholder="e.g. 4500"
+                placeholder={vertical === 'property' ? 'e.g. 1500' : 'e.g. 4500'}
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -409,17 +447,23 @@ export default function PostAdModal({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Pricing Type</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                {vertical === 'property'
+                  ? 'Rent / Sale Basis'
+                  : vertical === 'service'
+                  ? 'Billing Basis'
+                  : 'Pricing Type'}
+              </label>
               <select
                 value={pricePeriod}
                 onChange={(e) => setPricePeriod(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-medium bg-white"
               >
-                <option value="one-time">One-Time Price</option>
-                <option value="per day">Per Day</option>
-                <option value="per month">Per Month</option>
-                <option value="per year">Per Year</option>
-                <option value="starting at">Starting At</option>
+                {PRICING_OPTIONS[vertical].map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -431,16 +475,18 @@ export default function PostAdModal({
               onChange={(e) => setIsNegotiable(e.target.checked)}
               className="rounded text-emerald-600 focus:ring-emerald-500"
             />
-            Price is negotiable
+            {vertical === 'property' ? 'Rent / Price is negotiable' : 'Price is negotiable'}
           </label>
 
-          {/* Description */}
+          {/* Tailored Description */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Description</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              {activeCopy.descLabel}
+            </label>
             <textarea
               required
               rows={3}
-              placeholder="Include key specs, delivery options, or availability..."
+              placeholder={activeCopy.descPlaceholder}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"

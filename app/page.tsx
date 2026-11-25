@@ -26,6 +26,7 @@ import {
   Edit3,
   Check,
   Store,
+  RefreshCw,
 } from 'lucide-react';
 
 export default function FindItHome() {
@@ -41,6 +42,7 @@ export default function FindItHome() {
   const [listings, setListings] = useState<ListingWithSeller[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
@@ -91,7 +93,6 @@ export default function FindItHome() {
       setEditRegion(GHANA_REGIONS[mergedProfile.city] ? mergedProfile.city : 'Greater Accra Region');
       setEditCity(mergedProfile.neighborhood || 'Madina');
 
-      // Ensure profiles row exists in DB
       if (!prof || !prof.full_name) {
         await supabase.from('profiles').upsert({
           id: currentUser.id,
@@ -175,6 +176,12 @@ export default function FindItHome() {
     fetchRequests();
   }, [fetchListings, fetchRequests]);
 
+  const handleManualRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([fetchListings(), fetchRequests(), loadSession()]);
+    setTimeout(() => setRefreshing(false), 400);
+  };
+
   const handleRegionFilterChange = (newRegion: string) => {
     setSelectedRegion(newRegion);
     setSelectedCity('All Cities');
@@ -251,6 +258,11 @@ export default function FindItHome() {
     fetchListings();
   };
 
+  const handleDeleteRequest = async (id: string) => {
+    await supabase.from('buyer_requests').delete().eq('id', id);
+    fetchRequests();
+  };
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setActiveTab('explore');
@@ -270,14 +282,14 @@ export default function FindItHome() {
             </span>
           </div>
 
-          {/* Region -> City Selector */}
+          {/* Region -> City Selector + Refresh Button */}
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             <div className="flex items-center gap-1 bg-slate-100 px-2.5 py-1.5 rounded-full">
               <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <select
                 value={selectedRegion}
                 onChange={(e) => handleRegionFilterChange(e.target.value)}
-                className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer max-w-[140px] truncate"
+                className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer max-w-[135px] truncate"
               >
                 <option value="All Ghana">All Ghana</option>
                 {REGION_NAMES.map((r) => (
@@ -302,6 +314,16 @@ export default function FindItHome() {
                 ))}
               </select>
             )}
+
+            <button
+              type="button"
+              onClick={handleManualRefresh}
+              disabled={refreshing}
+              title="Refresh Feed"
+              className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition shrink-0"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-emerald-600' : ''}`} />
+            </button>
           </div>
         </div>
 
@@ -557,10 +579,22 @@ export default function FindItHome() {
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700">
                           {req.vertical}
                         </span>
-                        <span className="text-xs font-semibold text-slate-500 flex items-center gap-1">
-                          <MapPin className="w-3 h-3 text-emerald-600" />
-                          {req.city}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-slate-500 flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-emerald-600" />
+                            {req.city}
+                          </span>
+                          {user?.id === req.buyer_id && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteRequest(req.id)}
+                              className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
+                              title="Delete Request"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <h4 className="font-bold text-sm text-slate-900">{req.title}</h4>
@@ -573,7 +607,7 @@ export default function FindItHome() {
                           </span>
                         </div>
 
-                        {waDigits && (
+                        {waDigits && user?.id !== req.buyer_id && (
                           <a
                             href={`https://wa.me/${waDigits}?text=${pitchText}`}
                             target="_blank"
