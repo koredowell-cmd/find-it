@@ -6,6 +6,7 @@ import { MessageCircle, Send, ArrowLeft, Loader2, Package } from 'lucide-react';
 
 interface MessagesInboxProps {
   currentUserId: string;
+  onUnreadChange?: (count: number) => void;
 }
 
 interface ConversationThread {
@@ -17,16 +18,30 @@ interface ConversationThread {
   otherUserName: string;
   lastMessage: string;
   lastTimestamp: string;
+  unreadCount: number;
   messages: any[];
 }
 
-export default function MessagesInbox({ currentUserId }: MessagesInboxProps) {
+export default function MessagesInbox({ currentUserId, onUnreadChange }: MessagesInboxProps) {
   const [threads, setThreads] = useState<ConversationThread[]>([]);
   const [activeThreadKey, setActiveThreadKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const markThreadAsRead = useCallback(
+    async (listingId: string, senderId: string) => {
+      await supabase
+        .from('messages')
+        .update({ is_read: true })
+        .eq('listing_id', listingId)
+        .eq('sender_id', senderId)
+        .eq('receiver_id', currentUserId)
+        .eq('is_read', false);
+    },
+    [currentUserId]
+  );
 
   const loadConversations = useCallback(async () => {
     const { data, error } = await supabase
@@ -46,6 +61,7 @@ export default function MessagesInbox({ currentUserId }: MessagesInboxProps) {
     }
 
     const grouped: Record<string, ConversationThread> = {};
+    let totalUnread = 0;
 
     data.forEach((msg: any) => {
       if (!msg.listing_id) return;
@@ -64,6 +80,7 @@ export default function MessagesInbox({ currentUserId }: MessagesInboxProps) {
           otherUserName: otherUser?.full_name || 'Find It User',
           lastMessage: msg.content,
           lastTimestamp: msg.created_at,
+          unreadCount: 0,
           messages: [],
         };
       }
@@ -71,6 +88,11 @@ export default function MessagesInbox({ currentUserId }: MessagesInboxProps) {
       grouped[key].messages.push(msg);
       grouped[key].lastMessage = msg.content;
       grouped[key].lastTimestamp = msg.created_at;
+
+      if (!isMeSender && msg.is_read === false) {
+        grouped[key].unreadCount += 1;
+        totalUnread += 1;
+      }
     });
 
     const sortedThreads = Object.values(grouped).sort(
@@ -78,8 +100,9 @@ export default function MessagesInbox({ currentUserId }: MessagesInboxProps) {
     );
 
     setThreads(sortedThreads);
+    onUnreadChange?.(totalUnread);
     setLoading(false);
-  }, [currentUserId]);
+  }, [currentUserId, onUnreadChange]);
 
   useEffect(() => {
     loadConversations();
@@ -88,10 +111,10 @@ export default function MessagesInbox({ currentUserId }: MessagesInboxProps) {
       .channel(`inbox-${currentUserId}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
+        { event: '*', schema: 'public', table: 'messages' },
         (payload) => {
-          const msg = payload.new as any;
-          if (msg.sender_id === currentUserId || msg.receiver_id === currentUserId) {
+          const msg = (payload.new || payload.old) as any;
+          if (msg?.sender_id === currentUserId || msg?.receiver_id === currentUserId) {
             loadConversations();
           }
         }
@@ -106,8 +129,21 @@ export default function MessagesInbox({ currentUserId }: MessagesInboxProps) {
   const activeThread = threads.find((t) => t.key === activeThreadKey) || null;
 
   useEffect(() => {
+    if (activeThread && activeThread.unreadCount > 0) {
+      markThreadAsRead(activeThread.listingId, activeThread.otherUserId).then(() => {
+        loadConversations();
+      });
+    }
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activeThread?.messages.length]);
+  }, [activeThread, markThreadAsRead, loadConversations]);
+
+  const handleOpenThread = async (thread: ConversationThread) => {
+    setActiveThreadKey(thread.key);
+    if (thread.unreadCount > 0) {
+      await markThreadAsRead(thread.listingId, thread.otherUserId);
+      await loadConversations();
+    }
+  };
 
   const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,6 +158,7 @@ export default function MessagesInbox({ currentUserId }: MessagesInboxProps) {
       sender_id: currentUserId,
       receiver_id: activeThread.otherUserId,
       content,
+      is_read: false,
     });
 
     if (error) {
@@ -140,11 +177,9 @@ export default function MessagesInbox({ currentUserId }: MessagesInboxProps) {
     );
   }
 
-  // Active Chat Thread View
   if (activeThread) {
     return (
       <div className="bg-white rounded-3xl border border-slate-200/80 overflow-hidden flex flex-col h-[420px]">
-        {/* Thread Header */}
         <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-3 bg-slate-50/70">
           <button
             type="button"
@@ -163,7 +198,6 @@ export default function MessagesInbox({ currentUserId }: MessagesInboxProps) {
           </div>
         </div>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2.5 bg-slate-50/40">
           {activeThread.messages.map((m) => {
             const isMine = m.sender_id === currentUserId;
@@ -184,7 +218,6 @@ export default function MessagesInbox({ currentUserId }: MessagesInboxProps) {
           <div ref={bottomRef} />
         </div>
 
-        {/* Reply Input */}
         <form
           onSubmit={handleSendReply}
           className="p-2.5 bg-white border-t border-slate-100 flex items-center gap-2"
@@ -208,7 +241,6 @@ export default function MessagesInbox({ currentUserId }: MessagesInboxProps) {
     );
   }
 
-  // Conversations List View
   return (
     <div className="space-y-2.5">
       <div className="flex items-center justify-between px-1">
@@ -222,7 +254,7 @@ export default function MessagesInbox({ currentUserId }: MessagesInboxProps) {
           <MessageCircle className="w-6 h-6 text-slate-300 mx-auto mb-1.5" />
           <p className="text-xs text-slate-500">No messages yet.</p>
           <p className="text-[11px] text-slate-400 mt-0.5">
-            When buyers negotiate on your ads, chats appear here.
+            When buyers or sellers chat with you, threads appear here.
           </p>
         </div>
       ) : (
@@ -231,8 +263,12 @@ export default function MessagesInbox({ currentUserId }: MessagesInboxProps) {
             <button
               key={thread.key}
               type="button"
-              onClick={() => setActiveThreadKey(thread.key)}
-              className="w-full text-left p-3 bg-white rounded-2xl border border-slate-200/80 hover:border-emerald-300 transition flex items-center gap-3"
+              onClick={() => handleOpenThread(thread)}
+              className={`w-full text-left p-3 bg-white rounded-2xl border transition flex items-center gap-3 ${
+                thread.unreadCount > 0
+                  ? 'border-emerald-400 bg-emerald-50/30'
+                  : 'border-slate-200/80 hover:border-emerald-300'
+              }`}
             >
               <div className="w-11 h-11 rounded-xl bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
                 {thread.listingThumb ? (
@@ -261,8 +297,20 @@ export default function MessagesInbox({ currentUserId }: MessagesInboxProps) {
                 <p className="text-[11px] font-semibold text-emerald-700 truncate">
                   {thread.listingTitle}
                 </p>
-                <p className="text-xs text-slate-500 truncate mt-0.5">{thread.lastMessage}</p>
+                <p
+                  className={`text-xs truncate mt-0.5 ${
+                    thread.unreadCount > 0 ? 'font-bold text-slate-900' : 'text-slate-500'
+                  }`}
+                >
+                  {thread.lastMessage}
+                </p>
               </div>
+
+              {thread.unreadCount > 0 && (
+                <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold flex items-center justify-center shrink-0">
+                  {thread.unreadCount}
+                </span>
+              )}
             </button>
           ))}
         </div>

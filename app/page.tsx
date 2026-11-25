@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { GHANA_REGIONS, REGION_NAMES } from '@/lib/ghanaLocations';
 import AuthModal from '@/components/AuthModal';
 import PostAdModal from '@/components/PostAdModal';
+import EditAdModal from '@/components/EditAdModal';
 import ListingDetailModal, { ListingWithSeller } from '@/components/ListingDetailModal';
 import MessagesInbox from '@/components/MessagesInbox';
 import {
@@ -27,6 +28,8 @@ import {
   Check,
   Store,
   RefreshCw,
+  CheckCircle2,
+  RotateCcw,
 } from 'lucide-react';
 
 export default function FindItHome() {
@@ -40,12 +43,15 @@ export default function FindItHome() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const [listings, setListings] = useState<ListingWithSeller[]>([]);
+  const [myListings, setMyListings] = useState<ListingWithSeller[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
+  const [editingListing, setEditingListing] = useState<any | null>(null);
   const [selectedListing, setSelectedListing] = useState<ListingWithSeller | null>(null);
 
   // Edit Profile state
@@ -63,6 +69,34 @@ export default function FindItHome() {
   const [reqRegion, setReqRegion] = useState('Greater Accra Region');
   const [reqCity, setReqCity] = useState('Madina');
   const [postingReq, setPostingReq] = useState(false);
+
+  const fetchUnreadCount = useCallback(async (uid: string) => {
+    const { count } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('receiver_id', uid)
+      .eq('is_read', false);
+
+    setUnreadCount(count || 0);
+  }, []);
+
+  const fetchMyListings = useCallback(async (uid: string) => {
+    const { data } = await supabase
+      .from('listings')
+      .select(`
+        *,
+        profiles (
+          full_name,
+          whatsapp_number,
+          account_type,
+          is_verified
+        )
+      `)
+      .eq('seller_id', uid)
+      .order('created_at', { ascending: false });
+
+    setMyListings((data as any) || []);
+  }, []);
 
   const loadSession = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -103,10 +137,15 @@ export default function FindItHome() {
           neighborhood: mergedProfile.neighborhood,
         });
       }
+
+      fetchMyListings(currentUser.id);
+      fetchUnreadCount(currentUser.id);
     } else {
       setProfile(null);
+      setMyListings([]);
+      setUnreadCount(0);
     }
-  }, []);
+  }, [fetchMyListings, fetchUnreadCount]);
 
   const fetchListings = useCallback(async () => {
     setLoadingFeed(true);
@@ -170,6 +209,29 @@ export default function FindItHome() {
     });
     return () => authListener.subscription.unsubscribe();
   }, [loadSession]);
+
+  // Real-time listener for bottom nav unread badge
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`nav-unread-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages' },
+        (payload) => {
+          const msg = (payload.new || payload.old) as any;
+          if (msg?.receiver_id === user.id || msg?.sender_id === user.id) {
+            fetchUnreadCount(user.id);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, fetchUnreadCount]);
 
   useEffect(() => {
     fetchListings();
@@ -253,9 +315,17 @@ export default function FindItHome() {
     fetchRequests();
   };
 
+  const handleToggleListingStatus = async (ad: any) => {
+    const nextStatus = ad.status === 'sold' ? 'active' : 'sold';
+    await supabase.from('listings').update({ status: nextStatus }).eq('id', ad.id);
+    fetchListings();
+    if (user?.id) fetchMyListings(user.id);
+  };
+
   const handleDeleteListing = async (id: string) => {
     await supabase.from('listings').delete().eq('id', id);
     fetchListings();
+    if (user?.id) fetchMyListings(user.id);
   };
 
   const handleDeleteRequest = async (id: string) => {
@@ -267,8 +337,6 @@ export default function FindItHome() {
     await supabase.auth.signOut();
     setActiveTab('explore');
   };
-
-  const myListings = listings.filter((item) => item.seller_id === user?.id);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
@@ -627,7 +695,7 @@ export default function FindItHome() {
           </div>
         )}
 
-        {/* TAB 3: PROFESSIONAL ACCOUNT & MY ADS */}
+        {/* TAB 3: PROFESSIONAL ACCOUNT & LISTING MANAGEMENT */}
         {activeTab === 'account' && (
           <div className="space-y-5">
             {!user ? (
@@ -649,7 +717,7 @@ export default function FindItHome() {
               </div>
             ) : (
               <>
-                {/* Professional Seller/Buyer Profile Card */}
+                {/* Profile Card */}
                 <div className="bg-white rounded-3xl border border-slate-200/80 overflow-hidden shadow-2xs">
                   <div className="h-16 bg-gradient-to-r from-emerald-600 to-emerald-800" />
                   <div className="px-5 pb-5">
@@ -785,13 +853,16 @@ export default function FindItHome() {
                 </div>
 
                 {/* Messages & Negotiations Inbox */}
-                <MessagesInbox currentUserId={user.id} />
+                <MessagesInbox
+                  currentUserId={user.id}
+                  onUnreadChange={(count) => setUnreadCount(count)}
+                />
 
-                {/* My Active Ads */}
+                {/* Seller Listing Management (Active & Sold Ads) */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between px-1">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                      My Active Ads ({myListings.length})
+                      My Listings ({myListings.length})
                     </h3>
                     <button
                       type="button"
@@ -814,30 +885,91 @@ export default function FindItHome() {
                       </button>
                     </div>
                   ) : (
-                    myListings.map((ad) => (
-                      <div
-                        key={ad.id}
-                        className="p-3.5 bg-white rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3"
-                      >
+                    myListings.map((ad: any) => {
+                      const isSold = ad.status === 'sold';
+                      const thumb = ad.media_urls?.[0];
+
+                      return (
                         <div
-                          onClick={() => setSelectedListing(ad)}
-                          className="cursor-pointer flex-1 min-w-0"
+                          key={ad.id}
+                          className={`p-3.5 bg-white rounded-2xl border space-y-3 ${
+                            isSold ? 'border-slate-200 opacity-80' : 'border-slate-200/80'
+                          }`}
                         >
-                          <p className="font-bold text-sm text-slate-900 truncate">{ad.title}</p>
-                          <p className="text-xs font-semibold text-emerald-700">
-                            ₵{Number(ad.price).toLocaleString()}
-                          </p>
+                          <div
+                            onClick={() => setSelectedListing(ad)}
+                            className="flex items-center gap-3 cursor-pointer"
+                          >
+                            <div className="w-12 h-12 rounded-xl bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
+                              {thumb ? (
+                                <img src={thumb} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <Package className="w-5 h-5 text-slate-400" />
+                              )}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="font-bold text-sm text-slate-900 truncate">
+                                  {ad.title}
+                                </p>
+                                {isSold && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-100 text-amber-800 shrink-0">
+                                    Sold
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs font-semibold text-emerald-700">
+                                ₵{Number(ad.price).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Management Action Bar: Edit | Mark Sold/Relist | Delete */}
+                          <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                            <button
+                              type="button"
+                              onClick={() => setEditingListing(ad)}
+                              className="flex-1 py-1.5 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleListingStatus(ad)}
+                              className={`flex-1 py-1.5 px-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
+                                isSold
+                                  ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'
+                                  : 'bg-amber-50 hover:bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {isSold ? (
+                                <>
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                  Relist
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Mark Sold
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteListing(ad.id)}
+                              className="p-1.5 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
+                              title="Delete Ad"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteListing(ad.id)}
-                          className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
-                          title="Delete Ad"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </>
@@ -885,11 +1017,18 @@ export default function FindItHome() {
           <button
             type="button"
             onClick={() => setActiveTab('account')}
-            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-semibold transition ${
+            className={`relative flex flex-col items-center justify-center gap-1 text-[11px] font-semibold transition ${
               activeTab === 'account' ? 'text-emerald-600' : 'text-slate-400'
             }`}
           >
-            <UserIcon className="w-5 h-5" />
+            <div className="relative">
+              <UserIcon className="w-5 h-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[9px] font-extrabold flex items-center justify-center shadow-xs">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </div>
             Account
           </button>
         </div>
@@ -909,9 +1048,21 @@ export default function FindItHome() {
           userId={user.id}
           defaultRegion={profile?.city || 'Greater Accra Region'}
           defaultCity={profile?.neighborhood || 'Madina'}
-          onSuccess={fetchListings}
+          onSuccess={() => {
+            fetchListings();
+            fetchMyListings(user.id);
+          }}
         />
       )}
+
+      <EditAdModal
+        listing={editingListing}
+        onClose={() => setEditingListing(null)}
+        onSuccess={() => {
+          fetchListings();
+          if (user?.id) fetchMyListings(user.id);
+        }}
+      />
 
       <ListingDetailModal
         listing={selectedListing}
