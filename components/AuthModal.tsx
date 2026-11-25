@@ -17,7 +17,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Form fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -35,7 +34,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
 
     try {
       if (isSignUp) {
-        // Format Ghana WhatsApp number cleanly (e.g., 024... -> +23324...)
         let formattedPhone = whatsappNumber.trim().replace(/\s+/g, '');
         if (formattedPhone.startsWith('0')) {
           formattedPhone = '+233' + formattedPhone.slice(1);
@@ -75,8 +73,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-xs p-0 sm:p-4">
-      <div className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-200">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-sm p-0 sm:p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100">
           <div>
@@ -90,6 +94,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-2 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200"
           >
@@ -98,7 +103,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[82vh] overflow-y-auto">
           {error && (
             <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
               {error}
@@ -107,14 +112,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
 
           {isSignUp && (
             <>
-              {/* Account Type Toggle */}
               <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
                 <button
                   type="button"
                   onClick={() => setAccountType('individual')}
                   className={`flex items-center justify-center gap-2 py-2.5 text-xs font-semibold rounded-lg transition ${
                     accountType === 'individual'
-                      ? 'bg-white text-emerald-700 shadow-xs'
+                      ? 'bg-white text-emerald-700 shadow-sm'
                       : 'text-slate-600'
                   }`}
                 >
@@ -126,7 +130,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                   onClick={() => setAccountType('business')}
                   className={`flex items-center justify-center gap-2 py-2.5 text-xs font-semibold rounded-lg transition ${
                     accountType === 'business'
-                      ? 'bg-white text-emerald-700 shadow-xs'
+                      ? 'bg-white text-emerald-700 shadow-sm'
                       : 'text-slate-600'
                   }`}
                 >
@@ -135,7 +139,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 </button>
               </div>
 
-              {/* Full Name or Business Name */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   {accountType === 'business' ? 'Business / Shop Name' : 'Your Full Name'}
@@ -150,7 +153,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 />
               </div>
 
-              {/* WhatsApp Number */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   WhatsApp / Call Number
@@ -166,12 +168,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                     className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Buyers will use this to call or message you on WhatsApp.
-                </p>
               </div>
 
-              {/* City & Neighborhood */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">City</label>
@@ -207,7 +205,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
             </>
           )}
 
-          {/* Email */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
             <div className="relative">
@@ -223,7 +220,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
             </div>
           </div>
 
-          {/* Password */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">Password</label>
             <div className="relative">
@@ -240,17 +236,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
             </div>
           </div>
 
-          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition disabled:opacity-60"
+            className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm shadow-md flex items-center justify-center gap-2 transition disabled:opacity-60"
           >
             {loading && <Loader2 className="w-4 h-4 animate-spin" />}
             {isSignUp ? 'Create Account & Continue' : 'Sign In'}
           </button>
 
-          {/* Toggle Sign Up / Sign In */}
           <p className="text-center text-xs text-slate-600 pt-1">
             {isSignUp ? 'Already have an account?' : "Don't have an account yet?"}{' '}
             <button

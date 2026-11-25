@@ -549,6 +549,7 @@ export default function FindItHome() {
       <nav className="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-3xl mx-auto px-3 h-16 grid grid-cols-4 items-center">
           <button
+            type="button"
             onClick={() => setActiveTab('explore')}
             className={`flex flex-col items-center justify-center gap-1 text-[11px] font-semibold transition ${
               activeTab === 'explore' ? 'text-emerald-600' : 'text-slate-400'
@@ -559,6 +560,7 @@ export default function FindItHome() {
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('requests')}
             className={`flex flex-col items-center justify-center gap-1 text-[11px] font-semibold transition ${
               activeTab === 'requests' ? 'text-emerald-600' : 'text-slate-400'
@@ -569,6 +571,7 @@ export default function FindItHome() {
           </button>
 
           <button
+            type="button"
             onClick={handleOpenPostAd}
             className="flex flex-col items-center justify-center gap-1 text-[11px] font-bold text-emerald-700 transition"
           >
@@ -579,6 +582,7 @@ export default function FindItHome() {
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('account')}
             className={`flex flex-col items-center justify-center gap-1 text-[11px] font-semibold transition ${
               activeTab === 'account' ? 'text-emerald-600' : 'text-slate-400'
@@ -589,6 +593,34 @@ export default function FindItHome() {
           </button>
         </div>
       </nav>
+
+      {/* Modals */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onSuccess={loadSession}
+      />
+
+      {user && (
+        <PostAdModal
+          isOpen={showPostModal}
+          onClose={() => setShowPostModal(false)}
+          userId={user.id}
+          defaultCity={profile?.city || 'Accra'}
+          defaultNeighborhood={profile?.neighborhood || ''}
+          onSuccess={fetchListings}
+        />
+      )}
+
+      <ListingDetailModal
+        listing={selectedListing}
+        currentUserId={user?.id || null}
+        onClose={() => setSelectedListing(null)}
+        onRequireAuth={() => {
+          setSelectedListing(null);
+          setShowAuthModal(true);
+        }}
+      />
     </div>
   );
 }
