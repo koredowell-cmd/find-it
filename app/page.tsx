@@ -45,7 +45,6 @@ export default function FindItHome() {
   const [selectedVertical, setSelectedVertical] = useState<'all' | 'product' | 'service' | 'property'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Smart Sort & Budget Filter state
   const [sortBy, setSortBy] = useState<'newest' | 'price_asc' | 'price_desc'>('newest');
   const [showBudgetFilter, setShowBudgetFilter] = useState(false);
   const [minPrice, setMinPrice] = useState('');
@@ -66,7 +65,6 @@ export default function FindItHome() {
   const [selectedListing, setSelectedListing] = useState<ListingWithSeller | null>(null);
   const [storefrontSellerId, setStorefrontSellerId] = useState<string | null>(null);
 
-  // Edit Profile state
   const [editingProfile, setEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
@@ -74,7 +72,6 @@ export default function FindItHome() {
   const [editCity, setEditCity] = useState('Madina');
   const [savingProfile, setSavingProfile] = useState(false);
 
-  // Buyer Request state
   const [reqTitle, setReqTitle] = useState('');
   const [reqVertical, setReqVertical] = useState<'product' | 'service' | 'property'>('product');
   const [reqBudget, setReqBudget] = useState('');
@@ -258,7 +255,6 @@ export default function FindItHome() {
     setRequests(data || []);
   }, [selectedRegion]);
 
-  // Open shared ad link (?ad=<id>) automatically if present in URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sharedAdId = params.get('ad');
@@ -441,7 +437,6 @@ export default function FindItHome() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
-      {/* Top App Header */}
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 shrink-0">
@@ -451,7 +446,6 @@ export default function FindItHome() {
             </span>
           </div>
 
-          {/* Region -> City Selector + Refresh Button */}
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             <div className="flex items-center gap-1 bg-slate-100 px-2.5 py-1.5 rounded-full">
               <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -496,7 +490,6 @@ export default function FindItHome() {
           </div>
         </div>
 
-        {/* Search, Vertical Filter & Sort/Budget Bar */}
         {activeTab === 'explore' && (
           <div className="max-w-3xl mx-auto px-4 pb-3 space-y-2.5">
             <div className="flex items-center gap-2">
@@ -525,7 +518,6 @@ export default function FindItHome() {
               </button>
             </div>
 
-            {/* Collapsible Sort & Budget Bar */}
             {showBudgetFilter && (
               <div className="p-3 rounded-2xl bg-slate-100/90 border border-slate-200/80 grid grid-cols-3 gap-2">
                 <select
@@ -584,9 +576,7 @@ export default function FindItHome() {
         )}
       </header>
 
-      {/* Main Content Area */}
       <main className="max-w-3xl mx-auto px-4 pt-4">
-        {/* TAB 1: EXPLORE MARKETPLACE */}
         {activeTab === 'explore' && (
           <>
             {loadingFeed ? (
@@ -706,7 +696,6 @@ export default function FindItHome() {
           </>
         )}
 
-        {/* TAB 2: "FIND IT" BUYER REQUEST BOARD */}
         {activeTab === 'requests' && (
           <div className="space-y-5">
             <div className="bg-gradient-to-br from-emerald-700 to-emerald-900 rounded-3xl p-5 text-white shadow-lg">
@@ -857,7 +846,6 @@ export default function FindItHome() {
           </div>
         )}
 
-        {/* TAB 3: ACCOUNT, INBOX, SAVED ADS & LISTING MANAGEMENT */}
         {activeTab === 'account' && (
           <div className="space-y-5">
             {!user ? (
@@ -879,7 +867,6 @@ export default function FindItHome() {
               </div>
             ) : (
               <>
-                {/* Profile Card */}
                 <div className="bg-white rounded-3xl border border-slate-200/80 overflow-hidden shadow-2xs">
                   <div className="h-16 bg-gradient-to-r from-emerald-600 to-emerald-800" />
                   <div className="px-5 pb-5">
@@ -1016,13 +1003,11 @@ export default function FindItHome() {
                   </div>
                 </div>
 
-                {/* Messages & Negotiations Inbox */}
                 <MessagesInbox
                   currentUserId={user.id}
                   onUnreadChange={(count) => setUnreadCount(count)}
                 />
 
-                {/* Saved / Wishlist Ads */}
                 {savedListings.length > 0 && (
                   <div className="space-y-2.5">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 px-1 flex items-center gap-1.5">
@@ -1072,7 +1057,6 @@ export default function FindItHome() {
                   </div>
                 )}
 
-                {/* Seller Listing Management (Active & Sold Ads) */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between px-1">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -1191,7 +1175,6 @@ export default function FindItHome() {
         )}
       </main>
 
-      {/* Bottom Mobile Navigation Bar */}
       <nav className="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-3xl mx-auto px-3 h-16 grid grid-cols-4 items-center">
           <button
@@ -1247,7 +1230,6 @@ export default function FindItHome() {
         </div>
       </nav>
 
-      {/* Modals */}
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}

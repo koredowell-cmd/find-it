@@ -145,7 +145,7 @@ export default function ListingDetailModal({
         });
         return;
       } catch {
-        // Fallback to clipboard copy if user dismisses or browser blocks
+        // Fallback to clipboard
       }
     }
 
@@ -189,7 +189,6 @@ export default function ListingDetailModal({
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
       >
-        {/* Top Bar with Share, Save & Close */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 gap-2">
           <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full truncate">
             {listing.category}
@@ -240,9 +239,7 @@ export default function ListingDetailModal({
           </div>
         </div>
 
-        {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {/* Media Gallery */}
           {mediaList.length > 0 && (
             <div className="space-y-2">
               <div className="w-full h-64 sm:h-72 bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center">
@@ -276,7 +273,6 @@ export default function ListingDetailModal({
             </div>
           )}
 
-          {/* Title, Price & Location */}
           <div>
             <div className="flex items-baseline justify-between gap-2">
               <h1 className="text-xl font-bold text-slate-900">{listing.title}</h1>
@@ -312,12 +308,10 @@ export default function ListingDetailModal({
             </div>
           </div>
 
-          {/* Description */}
           <div className="p-3.5 rounded-2xl bg-slate-50 text-sm text-slate-700 leading-relaxed whitespace-pre-line">
             {listing.description}
           </div>
 
-          {/* Clickable Seller Storefront Card + Direct Contact */}
           <div className="p-4 rounded-2xl border border-slate-200 space-y-3">
             <button
               type="button"
@@ -366,7 +360,6 @@ export default function ListingDetailModal({
             </div>
           </div>
 
-          {/* Real-Time In-App Negotiation Chat */}
           {currentUserId !== listing.seller_id && (
             <div className="border border-slate-200 rounded-2xl overflow-hidden">
               <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-700">

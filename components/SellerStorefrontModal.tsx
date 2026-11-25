@@ -112,7 +112,6 @@ export default function SellerStorefrontModal({
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
       >
-        {/* Header */}
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
           <div className="flex items-center gap-2">
             <Store className="w-4 h-4 text-emerald-600" />
@@ -133,7 +132,6 @@ export default function SellerStorefrontModal({
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
-            {/* Seller Banner */}
             <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-700 to-emerald-900 text-white">
               <div className="flex items-center gap-3.5">
                 <div className="w-14 h-14 rounded-2xl bg-white/15 border border-white/25 flex items-center justify-center text-xl font-extrabold shrink-0">
@@ -149,7 +147,6 @@ export default function SellerStorefrontModal({
                 </div>
               </div>
 
-              {/* Stats Row */}
               <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-white/15 text-center">
                 <div>
                   <p className="text-base font-extrabold">{activeAds.length}</p>
@@ -174,7 +171,6 @@ export default function SellerStorefrontModal({
               </div>
             </div>
 
-            {/* Active Ads Grid */}
             <div className="space-y-2.5">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 Available Items & Services ({activeAds.length})
@@ -222,7 +218,6 @@ export default function SellerStorefrontModal({
               )}
             </div>
 
-            {/* Buyer Reviews & Rating Form */}
             <div className="space-y-3 pt-2 border-t border-slate-100">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 Buyer Reviews ({reviews.length})
