@@ -33,6 +33,7 @@ import {
   RotateCcw,
   Heart,
   SlidersHorizontal,
+  Bell,
 } from 'lucide-react';
 
 export default function FindItHome() {
@@ -54,6 +55,9 @@ export default function FindItHome() {
   const [myListings, setMyListings] = useState<ListingWithSeller[]>([]);
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [savedListings, setSavedListings] = useState<ListingWithSeller[]>([]);
+  const [savedSearches, setSavedSearches] = useState<any[]>([]);
+  const [alertSavedToast, setAlertSavedToast] = useState(false);
+
   const [requests, setRequests] = useState<any[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -135,6 +139,16 @@ export default function FindItHome() {
     }
   }, []);
 
+  const fetchSavedSearches = useCallback(async (uid: string) => {
+    const { data } = await supabase
+      .from('saved_searches')
+      .select('*')
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false });
+
+    setSavedSearches(data || []);
+  }, []);
+
   const loadSession = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     const currentUser = session?.user ?? null;
@@ -177,15 +191,17 @@ export default function FindItHome() {
 
       fetchMyListings(currentUser.id);
       fetchSavedListings(currentUser.id);
+      fetchSavedSearches(currentUser.id);
       fetchUnreadCount(currentUser.id);
     } else {
       setProfile(null);
       setMyListings([]);
       setSavedIds([]);
       setSavedListings([]);
+      setSavedSearches([]);
       setUnreadCount(0);
     }
-  }, [fetchMyListings, fetchSavedListings, fetchUnreadCount]);
+  }, [fetchMyListings, fetchSavedListings, fetchSavedSearches, fetchUnreadCount]);
 
   const fetchListings = useCallback(async () => {
     setLoadingFeed(true);
@@ -307,6 +323,38 @@ export default function FindItHome() {
     fetchListings();
     fetchRequests();
   }, [fetchListings, fetchRequests]);
+
+  const handleSaveSearchAlert = async () => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+    if (!searchQuery.trim()) return;
+
+    await supabase.from('saved_searches').insert({
+      user_id: user.id,
+      keyword: searchQuery.trim(),
+      region: selectedRegion,
+      max_price: maxPrice ? Number(maxPrice) : null,
+    });
+
+    fetchSavedSearches(user.id);
+    setAlertSavedToast(true);
+    setTimeout(() => setAlertSavedToast(false), 2500);
+  };
+
+  const handleDeleteSavedSearch = async (id: string) => {
+    await supabase.from('saved_searches').delete().eq('id', id);
+    if (user?.id) fetchSavedSearches(user.id);
+  };
+
+  const handleApplySavedSearch = (alert: any) => {
+    setSearchQuery(alert.keyword);
+    setSelectedRegion(alert.region || 'All Ghana');
+    setSelectedCity('All Cities');
+    setMaxPrice(alert.max_price ? String(alert.max_price) : '');
+    setActiveTab('explore');
+  };
 
   const handleToggleSave = async (listingId: string) => {
     if (!user) {
@@ -504,6 +552,18 @@ export default function FindItHome() {
                 />
               </div>
 
+              {searchQuery.trim().length > 1 && (
+                <button
+                  type="button"
+                  onClick={handleSaveSearchAlert}
+                  className="px-2.5 py-2.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold flex items-center gap-1 shrink-0 transition"
+                  title="Save Search Alert"
+                >
+                  <Bell className="w-4 h-4" />
+                  <span className="hidden sm:inline">Alert</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => setShowBudgetFilter(!showBudgetFilter)}
@@ -517,6 +577,13 @@ export default function FindItHome() {
                 <SlidersHorizontal className="w-4 h-4" />
               </button>
             </div>
+
+            {alertSavedToast && (
+              <div className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center justify-between">
+                <span>Search alert saved! View matches in your Account tab.</span>
+                <Check className="w-3.5 h-3.5" />
+              </div>
+            )}
 
             {showBudgetFilter && (
               <div className="p-3 rounded-2xl bg-slate-100/90 border border-slate-200/80 grid grid-cols-3 gap-2">
@@ -591,8 +658,7 @@ export default function FindItHome() {
                 </div>
                 <h3 className="font-bold text-slate-900">No ads found here yet</h3>
                 <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                  Try clearing your price filter or be the first to post in{' '}
-                  {selectedCity !== 'All Cities' ? selectedCity : selectedRegion}!
+                  Try clearing your price filter or tap the Bell icon above to save a search alert!
                 </p>
                 <button
                   type="button"
@@ -1007,6 +1073,68 @@ export default function FindItHome() {
                   currentUserId={user.id}
                   onUnreadChange={(count) => setUnreadCount(count)}
                 />
+
+                {/* Saved Search Alerts */}
+                {savedSearches.length > 0 && (
+                  <div className="space-y-2.5">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 px-1 flex items-center gap-1.5">
+                      <Bell className="w-3.5 h-3.5 text-amber-500" />
+                      Saved Search Alerts ({savedSearches.length})
+                    </h3>
+                    <div className="space-y-2">
+                      {savedSearches.map((alert) => {
+                        const matchCount = listings.filter((item) => {
+                          const matchesWord = item.title
+                            .toLowerCase()
+                            .includes(alert.keyword.toLowerCase());
+                          const matchesRegion =
+                            !alert.region ||
+                            alert.region === 'All Ghana' ||
+                            item.city === alert.region;
+                          const matchesPrice =
+                            !alert.max_price || Number(item.price) <= Number(alert.max_price);
+                          return matchesWord && matchesRegion && matchesPrice;
+                        }).length;
+
+                        return (
+                          <div
+                            key={alert.id}
+                            className="p-3 bg-white rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleApplySavedSearch(alert)}
+                              className="text-left flex-1 min-w-0"
+                            >
+                              <div className="flex items-center gap-2">
+                                <p className="font-bold text-xs text-slate-900 truncate">
+                                  &ldquo;{alert.keyword}&rdquo;
+                                </p>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 shrink-0">
+                                  {matchCount} {matchCount === 1 ? 'match' : 'matches'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                {alert.region || 'All Ghana'}
+                                {alert.max_price
+                                  ? ` • Under ₵${Number(alert.max_price).toLocaleString()}`
+                                  : ''}
+                              </p>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSavedSearch(alert.id)}
+                              className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
+                              title="Remove Alert"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {savedListings.length > 0 && (
                   <div className="space-y-2.5">

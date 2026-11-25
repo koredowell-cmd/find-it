@@ -13,6 +13,8 @@ import {
   Share2,
   Check,
   ChevronRight,
+  ShieldAlert,
+  Flag,
 } from 'lucide-react';
 
 export interface ListingWithSeller {
@@ -50,6 +52,14 @@ interface ListingDetailModalProps {
   onRequireAuth: () => void;
 }
 
+const REPORT_REASONS = [
+  'Suspected scam or fake listing',
+  'Asking for advance payment / MoMo deposit',
+  'Wrong price or misleading description',
+  'Prohibited or illegal item',
+  'Duplicate or spam post',
+];
+
 export default function ListingDetailModal({
   listing,
   currentUserId,
@@ -64,11 +74,23 @@ export default function ListingDetailModal({
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [copiedShare, setCopiedShare] = useState(false);
+
+  // Report Ad state
+  const [showReportBox, setShowReportBox] = useState(false);
+  const [reportReason, setReportReason] = useState(REPORT_REASONS[0]);
+  const [reportDetails, setReportDetails] = useState('');
+  const [submittingReport, setSubmittingReport] = useState(false);
+  const [reportSent, setReportSent] = useState(false);
+
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setActiveMediaIdx(0);
     setCopiedShare(false);
+    setShowReportBox(false);
+    setReportSent(false);
+    setReportDetails('');
+
     if (!listing || !currentUserId) {
       setMessages([]);
       return;
@@ -178,6 +200,24 @@ export default function ListingDetailModal({
       setNewMessage(content);
     }
     setSending(false);
+  };
+
+  const handleSubmitReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUserId) {
+      onRequireAuth();
+      return;
+    }
+    setSubmittingReport(true);
+    await supabase.from('listing_reports').insert({
+      listing_id: listing.id,
+      reporter_id: currentUserId,
+      reason: reportReason,
+      details: reportDetails.trim() || null,
+    });
+    setSubmittingReport(false);
+    setReportSent(true);
+    setShowReportBox(false);
   };
 
   return (
@@ -420,6 +460,83 @@ export default function ListingDetailModal({
               </form>
             </div>
           )}
+
+          {/* Buyer Safety Tips & Report Ad */}
+          <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 space-y-2">
+            <div className="flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <div className="text-[11px] text-amber-950 space-y-1">
+                <p className="font-bold">Safety Tips for Buyers & Sellers</p>
+                <ul className="list-disc pl-4 space-y-0.5 text-amber-900">
+                  <li>Meet in a safe, open public place (mall, fuel station, or campus).</li>
+                  <li>Inspect and test the item thoroughly before making payment.</li>
+                  <li>Never send MoMo deposits or delivery fees before seeing the item.</li>
+                </ul>
+              </div>
+            </div>
+
+            {currentUserId !== listing.seller_id && (
+              <div className="pt-1.5 border-t border-amber-200/70">
+                {reportSent ? (
+                  <p className="text-[11px] font-bold text-emerald-700">
+                    Thank you — this listing has been flagged for review.
+                  </p>
+                ) : !showReportBox ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!currentUserId) {
+                        onRequireAuth();
+                        return;
+                      }
+                      setShowReportBox(true);
+                    }}
+                    className="text-[11px] font-bold text-red-700 hover:underline flex items-center gap-1"
+                  >
+                    <Flag className="w-3 h-3" />
+                    Report suspicious ad or seller
+                  </button>
+                ) : (
+                  <form onSubmit={handleSubmitReport} className="space-y-2 pt-1">
+                    <select
+                      value={reportReason}
+                      onChange={(e) => setReportReason(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-amber-300 bg-white text-xs font-medium"
+                    >
+                      {REPORT_REASONS.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Optional details (what happened?)"
+                      value={reportDetails}
+                      onChange={(e) => setReportDetails(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-amber-300 bg-white text-xs"
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="submit"
+                        disabled={submittingReport}
+                        className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 disabled:opacity-50"
+                      >
+                        {submittingReport ? 'Submitting...' : 'Submit Report'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowReportBox(false)}
+                        className="px-2.5 py-1.5 rounded-lg text-xs text-slate-600 hover:bg-amber-100"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
