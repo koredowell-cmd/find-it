@@ -545,12 +545,12 @@ export default function FindItHome() {
         )}
       </main>
 
-      {/* Bottom Mobile Navigation Bar */}
-      <nav className="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200">
-        <div className="max-w-3xl mx-auto px-6 h-16 flex items-center justify-between">
+{/* Bottom Mobile Navigation Bar */}
+      <nav className="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
+        <div className="max-w-3xl mx-auto px-3 h-16 grid grid-cols-4 items-center">
           <button
             onClick={() => setActiveTab('explore')}
-            className={`flex flex-col items-center gap-1 text-[11px] font-semibold transition ${
+            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-semibold transition ${
               activeTab === 'explore' ? 'text-emerald-600' : 'text-slate-400'
             }`}
           >
@@ -560,7 +560,7 @@ export default function FindItHome() {
 
           <button
             onClick={() => setActiveTab('requests')}
-            className={`flex flex-col items-center gap-1 text-[11px] font-semibold transition ${
+            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-semibold transition ${
               activeTab === 'requests' ? 'text-emerald-600' : 'text-slate-400'
             }`}
           >
@@ -570,15 +570,17 @@ export default function FindItHome() {
 
           <button
             onClick={handleOpenPostAd}
-            className="-mt-6 px-4 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 transition"
+            className="flex flex-col items-center justify-center gap-1 text-[11px] font-bold text-emerald-700 transition"
           >
-            <Plus className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center shadow-sm">
+              <Plus className="w-4 h-4" />
+            </div>
             Post Ad
           </button>
 
           <button
             onClick={() => setActiveTab('account')}
-            className={`flex flex-col items-center gap-1 text-[11px] font-semibold transition ${
+            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-semibold transition ${
               activeTab === 'account' ? 'text-emerald-600' : 'text-slate-400'
             }`}
           >
@@ -587,34 +589,6 @@ export default function FindItHome() {
           </button>
         </div>
       </nav>
-
-      {/* Modals */}
-      <AuthModal
-        isOpen={showAuthModal}
-        onClose={() => setShowAuthModal(false)}
-        onSuccess={loadSession}
-      />
-
-      {user && (
-        <PostAdModal
-          isOpen={showPostModal}
-          onClose={() => setShowPostModal(false)}
-          userId={user.id}
-          defaultCity={profile?.city || 'Accra'}
-          defaultNeighborhood={profile?.neighborhood || ''}
-          onSuccess={fetchListings}
-        />
-      )}
-
-      <ListingDetailModal
-        listing={selectedListing}
-        currentUserId={user?.id || null}
-        onClose={() => setSelectedListing(null)}
-        onRequireAuth={() => {
-          setSelectedListing(null);
-          setShowAuthModal(true);
-        }}
-      />
     </div>
   );
 }
