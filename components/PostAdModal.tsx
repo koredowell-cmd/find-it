@@ -48,6 +48,67 @@ const CATEGORIES = {
 
 const CONDITIONS = ['Brand New', 'Foreign Used (UK/US)', 'Ghana Used', 'Refurbished'];
 
+// Compress images to max 1200px WebP/JPEG (~150-250KB) for fast mobile uploads
+async function compressImage(file: File): Promise<File> {
+  if (!file.type.startsWith('image/')) return file;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const maxDim = 1200;
+      let { width, height } = img;
+
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        resolve(file);
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+          const compressed = new File(
+            [blob],
+            file.name.replace(/\.[^/.]+$/, '') + '.jpg',
+            { type: 'image/jpeg', lastModified: Date.now() }
+          );
+          resolve(compressed);
+        },
+        'image/jpeg',
+        0.78
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file);
+    };
+
+    img.src = objectUrl;
+  });
+}
+
 export default function PostAdModal({
   isOpen,
   onClose,
@@ -75,6 +136,7 @@ export default function PostAdModal({
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [statusText, setStatusText] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -109,25 +171,34 @@ export default function PostAdModal({
     setError(null);
 
     try {
-      const uploadedUrls: string[] = [];
+      let uploadedUrls: string[] = [];
 
-      for (const file of files) {
-        const ext = file.name.split('.').pop();
-        const filePath = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      if (files.length > 0) {
+        setStatusText('Optimizing media...');
+        const preparedFiles = await Promise.all(files.map((f) => compressImage(f)));
 
-        const { error: uploadError } = await supabase.storage
-          .from('listing-media')
-          .upload(filePath, file);
+        setStatusText(`Uploading ${preparedFiles.length} file(s)...`);
+        uploadedUrls = await Promise.all(
+          preparedFiles.map(async (file, idx) => {
+            const ext = file.name.split('.').pop() || 'jpg';
+            const filePath = `${userId}/${Date.now()}-${idx}-${Math.random().toString(36).slice(2)}.${ext}`;
 
-        if (uploadError) throw uploadError;
+            const { error: uploadError } = await supabase.storage
+              .from('listing-media')
+              .upload(filePath, file, { cacheControl: '3600', upsert: false });
 
-        const { data: urlData } = supabase.storage
-          .from('listing-media')
-          .getPublicUrl(filePath);
+            if (uploadError) throw uploadError;
 
-        uploadedUrls.push(urlData.publicUrl);
+            const { data: urlData } = supabase.storage
+              .from('listing-media')
+              .getPublicUrl(filePath);
+
+            return urlData.publicUrl;
+          })
+        );
       }
 
+      setStatusText('Publishing ad...');
       const { error: insertError } = await supabase.from('listings').insert({
         seller_id: userId,
         vertical,
@@ -153,12 +224,14 @@ export default function PostAdModal({
       setPrice('');
       setFiles([]);
       setPreviews([]);
+      setStatusText('');
       onSuccess();
       onClose();
     } catch (err: any) {
       setError(err.message || 'Failed to post ad. Please try again.');
     } finally {
       setLoading(false);
+      setStatusText('');
     }
   };
 
@@ -412,7 +485,7 @@ export default function PostAdModal({
             className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm shadow-md flex items-center justify-center gap-2 transition disabled:opacity-60"
           >
             {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-            {loading ? 'Publishing Ad...' : 'Publish Ad Now'}
+            {loading ? statusText || 'Publishing Ad...' : 'Publish Ad Now'}
           </button>
         </form>
       </div>
