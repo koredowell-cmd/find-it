@@ -71,7 +71,7 @@ const VERTICAL_COPY = {
     titlePlaceholder: 'e.g. iPhone 14 Pro Max 256GB Deep Purple',
     descLabel: 'Product Specifications & Details',
     descPlaceholder:
-      'Describe brand, storage/size, battery health, any faults, included accessories, and delivery availability...',
+      'Describe brand, storage size, battery health, any faults, included accessories, and delivery availability...',
   },
   service: {
     titlePlaceholder: 'e.g. Professional Bridal & Event Makeup Artist',
@@ -83,7 +83,7 @@ const VERTICAL_COPY = {
     titlePlaceholder: 'e.g. Neat 2-Bedroom Self-Contained Apartment',
     descLabel: 'Property Features & Rent Terms',
     descPlaceholder:
-      'Describe number of rooms, self-contained or shared compound, water & ECG prepaid meter status, road access, and advance required (e.g. 1 or 2 years)...',
+      'Describe number of rooms, self-contained or shared compound, water & ECG status, and advance required (e.g. 1 or 2 years)...',
   },
 };
 
