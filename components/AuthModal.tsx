@@ -2,15 +2,14 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { X, Store, User, Phone, MapPin, Mail, Lock, Loader2 } from 'lucide-react';
+import { GHANA_REGIONS, REGION_NAMES } from '@/lib/ghanaLocations';
+import { X, Store, User, Phone, Mail, Lock, Loader2 } from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
-
-const GHANA_CITIES = ['Accra', 'Kumasi', 'Takoradi', 'Tamale', 'Tema', 'Cape Coast', 'Koforidua', 'Sunyani', 'Ho'];
 
 export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   const [isSignUp, setIsSignUp] = useState(true);
@@ -22,10 +21,16 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   const [fullName, setFullName] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [accountType, setAccountType] = useState<'individual' | 'business'>('individual');
-  const [city, setCity] = useState('Accra');
-  const [neighborhood, setNeighborhood] = useState('');
+  const [region, setRegion] = useState('Greater Accra Region');
+  const [city, setCity] = useState('Madina');
 
   if (!isOpen) return null;
+
+  const handleRegionChange = (newRegion: string) => {
+    setRegion(newRegion);
+    const cities = GHANA_REGIONS[newRegion] || [];
+    setCity(cities[0] || '');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +44,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           formattedPhone = '+233' + formattedPhone.slice(1);
         }
 
-        const { error: signUpError } = await supabase.auth.signUp({
+        const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -47,13 +52,24 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
               full_name: fullName.trim(),
               whatsapp_number: formattedPhone,
               account_type: accountType,
-              city,
-              neighborhood: neighborhood.trim(),
+              city: region,
+              neighborhood: city,
             },
           },
         });
 
         if (signUpError) throw signUpError;
+
+        if (data.user) {
+          await supabase.from('profiles').upsert({
+            id: data.user.id,
+            full_name: fullName.trim(),
+            whatsapp_number: formattedPhone,
+            account_type: accountType,
+            city: region,
+            neighborhood: city,
+          });
+        }
       } else {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
@@ -66,7 +82,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
       onSuccess();
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Authentication failed. Please try again.');
+      if (err?.message === 'Load failed' || err?.message === 'Failed to fetch') {
+        setError('Network connection failed. Please check your internet and try again.');
+      } else {
+        setError(err.message || 'Authentication failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -81,7 +101,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden"
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100">
           <div>
             <h2 className="text-xl font-bold text-slate-900">
@@ -102,7 +121,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[82vh] overflow-y-auto">
           {error && (
             <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
@@ -146,7 +164,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 <input
                   type="text"
                   required
-                  placeholder={accountType === 'business' ? 'e.g. Kofi Gadgets GH' : 'e.g. Kwame Mensah'}
+                  placeholder={accountType === 'business' ? 'e.g. Kofi Gadgets GH' : 'e.g. Dowell Kore'}
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -162,7 +180,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                   <input
                     type="tel"
                     required
-                    placeholder="e.g. 024 123 4567"
+                    placeholder="e.g. 054 740 9800"
                     value={whatsappNumber}
                     onChange={(e) => setWhatsappNumber(e.target.value)}
                     className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -172,34 +190,34 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">City</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Region</label>
                   <select
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    value={region}
+                    onChange={(e) => handleRegionChange(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
-                    {GHANA_CITIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
+                    {REGION_NAMES.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Area / Hood
+                    City / Town
                   </label>
-                  <div className="relative">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. East Legon"
-                      value={neighborhood}
-                      onChange={(e) => setNeighborhood(e.target.value)}
-                      className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
+                  <select
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {(GHANA_REGIONS[region] || []).map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </>

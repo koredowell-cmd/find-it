@@ -2,57 +2,76 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import {
-  X,
-  Package,
-  Wrench,
-  Home,
-  Camera,
-  MapPin,
-  Loader2,
-  Trash2,
-  CheckCircle2,
-} from 'lucide-react';
+import { GHANA_REGIONS, REGION_NAMES } from '@/lib/ghanaLocations';
+import { X, Upload, Package, Wrench, Home, Loader2, Trash2 } from 'lucide-react';
 
 interface PostAdModalProps {
   isOpen: boolean;
   onClose: () => void;
   userId: string;
+  defaultRegion?: string;
   defaultCity?: string;
-  defaultNeighborhood?: string;
   onSuccess: () => void;
 }
 
 const CATEGORIES = {
-  product: ['Phones & Tablets', 'Laptops & Computers', 'Fashion & Sneakers', 'Cars & Vehicles', 'Electronics & TVs', 'Furniture & Home', 'Other Goods'],
-  service: ['Repairs & Tech', 'Beauty & Barbering', 'Graphic Design & Media', 'Dispatch & Delivery', 'Plumbing & Electrical', 'Cleaning & Laundry', 'Events & Catering'],
-  property: ['Apartments & Chamber/Hall', 'Hostels & Shared Rooms', 'Houses for Sale', 'Land & Plots', 'Shops & Office Space'],
+  product: [
+    'Phones & Tablets',
+    'Laptops & Computers',
+    'Electronics & TVs',
+    'Vehicles & Cars',
+    'Fashion & Clothing',
+    'Home & Furniture',
+    'Health & Beauty',
+    'Other Products',
+  ],
+  service: [
+    'Plumbing & Electrical',
+    'Catering & Baking',
+    'Makeup, Barber & Salon',
+    'Graphic Design & Tech',
+    'Auto Mechanic & Car Wash',
+    'Cleaning & Laundry',
+    'Delivery & Logistics',
+    'Tutoring & Lessons',
+  ],
+  property: [
+    'Chamber & Hall / Single Room',
+    'Apartments for Rent',
+    'Houses for Rent',
+    'Houses & Land for Sale',
+    'Hostels & Student Rooms',
+    'Shops & Offices',
+    'Short-Stay / Airbnb',
+  ],
 };
 
-const CONDITIONS = ['Brand New', 'UK Used', 'Fairly Used', 'Refurbished'];
-const PRICE_PERIODS = ['one-time', 'per month', 'per year', 'starting at', 'per day'];
-const GHANA_CITIES = ['Accra', 'Kumasi', 'Takoradi', 'Tamale', 'Tema', 'Cape Coast', 'Koforidua', 'Sunyani', 'Ho'];
+const CONDITIONS = ['Brand New', 'Foreign Used (UK/US)', 'Ghana Used', 'Refurbished'];
 
 export default function PostAdModal({
   isOpen,
   onClose,
   userId,
-  defaultCity = 'Accra',
-  defaultNeighborhood = '',
+  defaultRegion = 'Greater Accra Region',
+  defaultCity = 'Madina',
   onSuccess,
 }: PostAdModalProps) {
+  const validRegion = GHANA_REGIONS[defaultRegion] ? defaultRegion : 'Greater Accra Region';
+  const validCity = GHANA_REGIONS[validRegion]?.includes(defaultCity)
+    ? defaultCity
+    : GHANA_REGIONS[validRegion][0];
+
   const [vertical, setVertical] = useState<'product' | 'service' | 'property'>('product');
   const [category, setCategory] = useState(CATEGORIES.product[0]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [condition, setCondition] = useState('UK Used');
+  const [condition, setCondition] = useState(CONDITIONS[1]);
   const [price, setPrice] = useState('');
   const [pricePeriod, setPricePeriod] = useState('one-time');
   const [isNegotiable, setIsNegotiable] = useState(true);
-  const [city, setCity] = useState(defaultCity);
-  const [neighborhood, setNeighborhood] = useState(defaultNeighborhood);
+  const [region, setRegion] = useState(validRegion);
+  const [city, setCity] = useState(validCity);
 
-  // Media files state
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -63,23 +82,20 @@ export default function PostAdModal({
   const handleVerticalChange = (newVertical: 'product' | 'service' | 'property') => {
     setVertical(newVertical);
     setCategory(CATEGORIES[newVertical][0]);
-    if (newVertical === 'product') {
-      setPricePeriod('one-time');
-    } else if (newVertical === 'service') {
-      setPricePeriod('starting at');
-    } else {
-      setPricePeriod('per month');
-    }
+    setPricePeriod(newVertical === 'property' ? 'per month' : 'one-time');
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files) return;
-    const selected = Array.from(e.target.files).slice(0, 4 - files.length);
-    const newFiles = [...files, ...selected];
-    setFiles(newFiles);
+  const handleRegionChange = (newRegion: string) => {
+    setRegion(newRegion);
+    setCity(GHANA_REGIONS[newRegion]?.[0] || '');
+  };
 
-    const newPreviews = selected.map((file) => URL.createObjectURL(file));
-    setPreviews((prev) => [...prev, ...newPreviews]);
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const selected = Array.from(e.target.files).slice(0, 5 - files.length);
+    setFiles((prev) => [...prev, ...selected]);
+    const newUrls = selected.map((file) => URL.createObjectURL(file));
+    setPreviews((prev) => [...prev, ...newUrls]);
   };
 
   const removeFile = (index: number) => {
@@ -93,27 +109,25 @@ export default function PostAdModal({
     setError(null);
 
     try {
-      // 1. Upload media files to Supabase Storage ('listing-media' bucket)
       const uploadedUrls: string[] = [];
 
       for (const file of files) {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+        const ext = file.name.split('.').pop();
+        const filePath = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
         const { error: uploadError } = await supabase.storage
           .from('listing-media')
-          .upload(fileName, file);
+          .upload(filePath, file);
 
         if (uploadError) throw uploadError;
 
-        const { data: publicUrlData } = supabase.storage
+        const { data: urlData } = supabase.storage
           .from('listing-media')
-          .getPublicUrl(fileName);
+          .getPublicUrl(filePath);
 
-        uploadedUrls.push(publicUrlData.publicUrl);
+        uploadedUrls.push(urlData.publicUrl);
       }
 
-      // 2. Insert listing row into PostgreSQL
       const { error: insertError } = await supabase.from('listings').insert({
         seller_id: userId,
         vertical,
@@ -126,14 +140,14 @@ export default function PostAdModal({
         currency: 'GHS',
         is_negotiable: isNegotiable,
         country_code: 'GH',
-        city,
-        neighborhood: neighborhood.trim(),
+        city: region,
+        neighborhood: city,
         media_urls: uploadedUrls,
+        status: 'active',
       });
 
       if (insertError) throw insertError;
 
-      // Reset form & refresh feed
       setTitle('');
       setDescription('');
       setPrice('');
@@ -142,22 +156,28 @@ export default function PostAdModal({
       onSuccess();
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Failed to publish listing. Please try again.');
+      setError(err.message || 'Failed to post ad. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-xs p-0 sm:p-4">
-      <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-sm p-0 sm:p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden"
+      >
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">Post on Find It</h2>
-            <p className="text-xs text-slate-500">Reach buyers across Ghana directly — zero fees</p>
+            <h2 className="text-lg font-bold text-slate-900">Post Free Ad on Find It</h2>
+            <p className="text-xs text-slate-500">Visible to all buyers across Ghana</p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-2 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200"
           >
@@ -165,82 +185,79 @@ export default function PostAdModal({
           </button>
         </div>
 
-        {/* Scrollable Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[84vh] overflow-y-auto">
           {error && (
             <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
               {error}
             </div>
           )}
 
-          {/* Vertical Selector (Product / Service / Property) */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              What are you advertising?
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { id: 'product', label: 'Product', icon: Package },
-                { id: 'service', label: 'Service', icon: Wrench },
-                { id: 'property', label: 'Property', icon: Home },
-              ].map((item) => {
-                const Icon = item.icon;
-                const active = vertical === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleVerticalChange(item.id as any)}
-                    className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border text-xs font-semibold transition ${
-                      active
-                        ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
+          {/* Vertical Selector */}
+          <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 rounded-xl">
+            <button
+              type="button"
+              onClick={() => handleVerticalChange('product')}
+              className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold rounded-lg transition ${
+                vertical === 'product' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600'
+              }`}
+            >
+              <Package className="w-4 h-4" />
+              Product
+            </button>
+            <button
+              type="button"
+              onClick={() => handleVerticalChange('service')}
+              className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold rounded-lg transition ${
+                vertical === 'service' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600'
+              }`}
+            >
+              <Wrench className="w-4 h-4" />
+              Service
+            </button>
+            <button
+              type="button"
+              onClick={() => handleVerticalChange('property')}
+              className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold rounded-lg transition ${
+                vertical === 'property' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600'
+              }`}
+            >
+              <Home className="w-4 h-4" />
+              Property
+            </button>
           </div>
 
-          {/* Photo / Short Video Upload */}
+          {/* Media Upload */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-slate-700">
-                Photos or Short Video Clip (Max 4)
-              </label>
-              <span className="text-[11px] text-slate-400">{files.length}/4 added</span>
-            </div>
-
-            <div className="grid grid-cols-4 gap-2">
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+              Photos or Short Video (Max 5)
+            </label>
+            <div className="flex flex-wrap gap-2">
               {previews.map((src, idx) => (
-                <div key={idx} className="relative aspect-square rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
+                <div key={idx} className="relative w-20 h-20 rounded-xl overflow-hidden border border-slate-200">
                   {files[idx]?.type.startsWith('video/') ? (
                     <video src={src} className="w-full h-full object-cover" />
                   ) : (
-                    <img src={src} alt="Preview" className="w-full h-full object-cover" />
+                    <img src={src} alt="preview" className="w-full h-full object-cover" />
                   )}
                   <button
                     type="button"
                     onClick={() => removeFile(idx)}
-                    className="absolute top-1 right-1 p-1 rounded-full bg-slate-900/75 text-white hover:bg-red-600"
+                    className="absolute top-1 right-1 p-1 rounded-full bg-red-600 text-white"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
               ))}
 
-              {files.length < 4 && (
-                <label className="aspect-square rounded-xl border-2 border-dashed border-slate-300 hover:border-emerald-500 hover:bg-emerald-50/50 flex flex-col items-center justify-center gap-1 cursor-pointer text-slate-500 transition">
-                  <Camera className="w-5 h-5 text-emerald-600" />
+              {files.length < 5 && (
+                <label className="w-20 h-20 rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/50 hover:bg-emerald-50 flex flex-col items-center justify-center cursor-pointer text-emerald-700 transition">
+                  <Upload className="w-5 h-5 mb-1" />
                   <span className="text-[10px] font-semibold">Add Media</span>
                   <input
                     type="file"
                     accept="image/*,video/*"
                     multiple
-                    onChange={handleFileChange}
+                    onChange={handleFileSelect}
                     className="hidden"
                   />
                 </label>
@@ -249,13 +266,13 @@ export default function PostAdModal({
           </div>
 
           {/* Category & Condition */}
-          <div className={`grid ${vertical === 'product' ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Category</label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white"
               >
                 {CATEGORIES[vertical].map((cat) => (
                   <option key={cat} value={cat}>
@@ -271,7 +288,7 @@ export default function PostAdModal({
                 <select
                   value={condition}
                   onChange={(e) => setCondition(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white"
                 >
                   {CONDITIONS.map((cond) => (
                     <option key={cond} value={cond}>
@@ -291,10 +308,10 @@ export default function PostAdModal({
               required
               placeholder={
                 vertical === 'product'
-                  ? 'e.g. iPhone 13 Pro 256GB Sierra Blue (89% BH)'
+                  ? 'e.g. iPhone 14 Pro Max 256GB Deep Purple'
                   : vertical === 'service'
-                  ? 'e.g. Professional Graphic Designer & Brand Identity'
-                  : 'e.g. Neat 2-Bedroom Self-Contain Apartment'
+                  ? 'e.g. Professional Bridal & Event Makeup Artist'
+                  : 'e.g. Neat 2-Bedroom Self-Contained Apartment'
               }
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -302,18 +319,16 @@ export default function PostAdModal({
             />
           </div>
 
-          {/* Price & Billing Period */}
+          {/* Price & Period */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Price (GHS ₵)
-              </label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Price (₵ GHS)</label>
               <input
                 type="number"
                 required
                 min="0"
                 step="0.01"
-                placeholder="e.g. 5500"
+                placeholder="e.g. 4500"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -321,98 +336,83 @@ export default function PostAdModal({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Price Basis</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Pricing Type</label>
               <select
                 value={pricePeriod}
                 onChange={(e) => setPricePeriod(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white"
               >
-                {PRICE_PERIODS.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
+                <option value="one-time">One-Time Price</option>
+                <option value="per day">Per Day</option>
+                <option value="per month">Per Month</option>
+                <option value="per year">Per Year</option>
+                <option value="starting at">Starting At</option>
               </select>
             </div>
           </div>
 
-          {/* Negotiable Checkbox */}
-          <label className="flex items-center gap-2 cursor-pointer select-none">
+          <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
             <input
               type="checkbox"
               checked={isNegotiable}
               onChange={(e) => setIsNegotiable(e.target.checked)}
-              className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+              className="rounded text-emerald-600 focus:ring-emerald-500"
             />
-            <span className="text-xs font-medium text-slate-700">Price is negotiable</span>
+            Price is negotiable
           </label>
 
           {/* Description */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Details & Specifications
-            </label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Description</label>
             <textarea
-              rows={3}
               required
-              placeholder="Describe key details, flaws (if any), included accessories, or terms..."
+              rows={3}
+              placeholder="Include key specs, delivery options, or availability..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 
-          {/* Location */}
+          {/* Region & City/Town */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">City</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Region</label>
+              <select
+                value={region}
+                onChange={(e) => handleRegionChange(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-medium bg-white"
+              >
+                {REGION_NAMES.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">City / Town</label>
               <select
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-medium bg-white"
               >
-                {GHANA_CITIES.map((c) => (
+                {(GHANA_REGIONS[region] || []).map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Neighborhood
-              </label>
-              <div className="relative">
-                <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Madina, Osu"
-                  value={neighborhood}
-                  onChange={(e) => setNeighborhood(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-            </div>
           </div>
 
-          {/* Submit */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition disabled:opacity-60"
+            className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm shadow-md flex items-center justify-center gap-2 transition disabled:opacity-60"
           >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Uploading & Publishing...
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="w-4 h-4" />
-                Publish Ad Now
-              </>
-            )}
+            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+            {loading ? 'Publishing Ad...' : 'Publish Ad Now'}
           </button>
         </form>
       </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { GHANA_REGIONS, REGION_NAMES } from '@/lib/ghanaLocations';
 import AuthModal from '@/components/AuthModal';
 import PostAdModal from '@/components/PostAdModal';
 import ListingDetailModal, { ListingWithSeller } from '@/components/ListingDetailModal';
@@ -21,16 +22,19 @@ import {
   Send,
   Loader2,
   Trash2,
+  Phone,
+  Edit3,
+  Check,
+  Store,
 } from 'lucide-react';
-
-const CITIES = ['All Ghana', 'Accra', 'Kumasi', 'Takoradi', 'Tamale', 'Tema', 'Cape Coast'];
 
 export default function FindItHome() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
 
   const [activeTab, setActiveTab] = useState<'explore' | 'requests' | 'account'>('explore');
-  const [selectedCity, setSelectedCity] = useState('All Ghana');
+  const [selectedRegion, setSelectedRegion] = useState('All Ghana');
+  const [selectedCity, setSelectedCity] = useState('All Cities');
   const [selectedVertical, setSelectedVertical] = useState<'all' | 'product' | 'service' | 'property'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -42,10 +46,20 @@ export default function FindItHome() {
   const [showPostModal, setShowPostModal] = useState(false);
   const [selectedListing, setSelectedListing] = useState<ListingWithSeller | null>(null);
 
+  // Edit Profile state
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editRegion, setEditRegion] = useState('Greater Accra Region');
+  const [editCity, setEditCity] = useState('Madina');
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  // Buyer Request state
   const [reqTitle, setReqTitle] = useState('');
   const [reqVertical, setReqVertical] = useState<'product' | 'service' | 'property'>('product');
   const [reqBudget, setReqBudget] = useState('');
-  const [reqCity, setReqCity] = useState('Accra');
+  const [reqRegion, setReqRegion] = useState('Greater Accra Region');
+  const [reqCity, setReqCity] = useState('Madina');
   const [postingReq, setPostingReq] = useState(false);
 
   const loadSession = useCallback(async () => {
@@ -54,12 +68,40 @@ export default function FindItHome() {
     setUser(currentUser);
 
     if (currentUser) {
+      const meta = currentUser.user_metadata || {};
       const { data: prof } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', currentUser.id)
         .single();
-      setProfile(prof);
+
+      const mergedProfile = {
+        id: currentUser.id,
+        full_name: prof?.full_name || meta.full_name || currentUser.email?.split('@')[0] || 'Find It User',
+        whatsapp_number: prof?.whatsapp_number || meta.whatsapp_number || '',
+        account_type: prof?.account_type || meta.account_type || 'individual',
+        city: prof?.city || meta.city || 'Greater Accra Region',
+        neighborhood: prof?.neighborhood || meta.neighborhood || 'Madina',
+        is_verified: prof?.is_verified || false,
+      };
+
+      setProfile(mergedProfile);
+      setEditName(mergedProfile.full_name);
+      setEditPhone(mergedProfile.whatsapp_number);
+      setEditRegion(GHANA_REGIONS[mergedProfile.city] ? mergedProfile.city : 'Greater Accra Region');
+      setEditCity(mergedProfile.neighborhood || 'Madina');
+
+      // Ensure profiles row exists in DB
+      if (!prof || !prof.full_name) {
+        await supabase.from('profiles').upsert({
+          id: currentUser.id,
+          full_name: mergedProfile.full_name,
+          whatsapp_number: mergedProfile.whatsapp_number,
+          account_type: mergedProfile.account_type,
+          city: mergedProfile.city,
+          neighborhood: mergedProfile.neighborhood,
+        });
+      }
     } else {
       setProfile(null);
     }
@@ -81,8 +123,11 @@ export default function FindItHome() {
       .eq('status', 'active')
       .order('created_at', { ascending: false });
 
-    if (selectedCity !== 'All Ghana') {
-      query = query.eq('city', selectedCity);
+    if (selectedRegion !== 'All Ghana') {
+      query = query.eq('city', selectedRegion);
+      if (selectedCity !== 'All Cities') {
+        query = query.eq('neighborhood', selectedCity);
+      }
     }
     if (selectedVertical !== 'all') {
       query = query.eq('vertical', selectedVertical);
@@ -94,7 +139,7 @@ export default function FindItHome() {
     const { data } = await query;
     setListings((data as any) || []);
     setLoadingFeed(false);
-  }, [selectedCity, selectedVertical, searchQuery]);
+  }, [selectedRegion, selectedCity, selectedVertical, searchQuery]);
 
   const fetchRequests = useCallback(async () => {
     let query = supabase
@@ -109,13 +154,13 @@ export default function FindItHome() {
       .eq('status', 'open')
       .order('created_at', { ascending: false });
 
-    if (selectedCity !== 'All Ghana') {
-      query = query.eq('city', selectedCity);
+    if (selectedRegion !== 'All Ghana') {
+      query = query.eq('city', selectedRegion);
     }
 
     const { data } = await query;
     setRequests(data || []);
-  }, [selectedCity]);
+  }, [selectedRegion]);
 
   useEffect(() => {
     loadSession();
@@ -130,12 +175,50 @@ export default function FindItHome() {
     fetchRequests();
   }, [fetchListings, fetchRequests]);
 
+  const handleRegionFilterChange = (newRegion: string) => {
+    setSelectedRegion(newRegion);
+    setSelectedCity('All Cities');
+  };
+
   const handleOpenPostAd = () => {
     if (!user) {
       setShowAuthModal(true);
     } else {
       setShowPostModal(true);
     }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setSavingProfile(true);
+
+    let formattedPhone = editPhone.trim().replace(/\s+/g, '');
+    if (formattedPhone.startsWith('0')) {
+      formattedPhone = '+233' + formattedPhone.slice(1);
+    }
+
+    await supabase.from('profiles').upsert({
+      id: user.id,
+      full_name: editName.trim(),
+      whatsapp_number: formattedPhone,
+      account_type: profile?.account_type || 'individual',
+      city: editRegion,
+      neighborhood: editCity,
+    });
+
+    await supabase.auth.updateUser({
+      data: {
+        full_name: editName.trim(),
+        whatsapp_number: formattedPhone,
+        city: editRegion,
+        neighborhood: editCity,
+      },
+    });
+
+    await loadSession();
+    setSavingProfile(false);
+    setEditingProfile(false);
   };
 
   const handlePostRequest = async (e: React.FormEvent) => {
@@ -150,11 +233,11 @@ export default function FindItHome() {
     await supabase.from('buyer_requests').insert({
       buyer_id: user.id,
       vertical: reqVertical,
-      title: reqTitle.trim(),
+      title: `${reqTitle.trim()} (${reqRegion} - ${reqCity})`,
       max_budget: reqBudget ? parseFloat(reqBudget) : null,
       currency: 'GHS',
       country_code: 'GH',
-      city: reqCity,
+      city: reqRegion,
     });
 
     setReqTitle('');
@@ -179,27 +262,46 @@ export default function FindItHome() {
     <div className="min-h-screen bg-slate-50 pb-24">
       {/* Top App Header */}
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <img src="/icon.svg" alt="Find It" className="w-8 h-8 rounded-lg shadow-xs" />
             <span className="font-extrabold text-lg tracking-tight text-slate-900">
               Find <span className="text-emerald-600">It</span>
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-full">
-            <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-            <select
-              value={selectedCity}
-              onChange={(e) => setSelectedCity(e.target.value)}
-              className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer"
-            >
-              {CITIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+          {/* Region -> City Selector */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-1 bg-slate-100 px-2.5 py-1.5 rounded-full">
+              <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <select
+                value={selectedRegion}
+                onChange={(e) => handleRegionFilterChange(e.target.value)}
+                className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer max-w-[140px] truncate"
+              >
+                <option value="All Ghana">All Ghana</option>
+                {REGION_NAMES.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedRegion !== 'All Ghana' && (
+              <select
+                value={selectedCity}
+                onChange={(e) => setSelectedCity(e.target.value)}
+                className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-2.5 py-1.5 rounded-full text-xs font-bold focus:outline-none cursor-pointer"
+              >
+                <option value="All Cities">All Cities</option>
+                {(GHANA_REGIONS[selectedRegion] || []).map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
 
@@ -229,6 +331,7 @@ export default function FindItHome() {
                 return (
                   <button
                     key={tab.id}
+                    type="button"
                     onClick={() => setSelectedVertical(tab.id as any)}
                     className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 transition ${
                       active
@@ -263,9 +366,11 @@ export default function FindItHome() {
                 </div>
                 <h3 className="font-bold text-slate-900">No ads found here yet</h3>
                 <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                  Be the first to post a product, service, or property in {selectedCity}!
+                  Be the first to post a product, service, or property in{' '}
+                  {selectedCity !== 'All Cities' ? selectedCity : selectedRegion}!
                 </p>
                 <button
+                  type="button"
                   onClick={handleOpenPostAd}
                   className="mt-4 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-sm"
                 >
@@ -277,6 +382,9 @@ export default function FindItHome() {
                 {listings.map((item) => {
                   const thumb = item.media_urls?.[0];
                   const isVid = thumb?.match(/\.(mp4|webm|mov|ogg)(\?|$)/i);
+                  const locationLabel = item.neighborhood
+                    ? `${item.city.replace(' Region', '')} - ${item.neighborhood}`
+                    : item.city;
 
                   return (
                     <div
@@ -324,9 +432,18 @@ export default function FindItHome() {
                           </h3>
                         </div>
 
-                        <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-2 pt-2 border-t border-slate-100">
-                          <MapPin className="w-3 h-3 shrink-0 text-slate-400" />
-                          <span className="truncate">{item.neighborhood || item.city}</span>
+                        <div className="mt-2.5 pt-2 border-t border-slate-100 space-y-2">
+                          <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                            <MapPin className="w-3 h-3 shrink-0 text-emerald-600" />
+                            <span className="truncate">{locationLabel}</span>
+                          </div>
+
+                          {item.seller_id !== user?.id && (
+                            <div className="w-full py-1.5 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-[11px] flex items-center justify-center gap-1">
+                              <MessageCircle className="w-3 h-3" />
+                              Chat & Negotiate
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -354,16 +471,16 @@ export default function FindItHome() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Looking for clean UK-used iPhone 13 in Accra..."
+                  placeholder="e.g. Looking for clean UK-used iPhone 13..."
                   value={reqTitle}
                   onChange={(e) => setReqTitle(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/95 text-slate-900 placeholder:text-slate-400 text-xs font-medium focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 text-xs font-medium focus:outline-none"
                 />
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <select
                     value={reqVertical}
                     onChange={(e) => setReqVertical(e.target.value as any)}
-                    className="px-2.5 py-2 rounded-xl bg-white/95 text-slate-900 text-xs font-semibold"
+                    className="px-2.5 py-2 rounded-xl bg-white text-slate-900 text-xs font-semibold"
                   >
                     <option value="product">Product</option>
                     <option value="service">Service</option>
@@ -374,14 +491,30 @@ export default function FindItHome() {
                     placeholder="Budget (₵)"
                     value={reqBudget}
                     onChange={(e) => setReqBudget(e.target.value)}
-                    className="px-3 py-2 rounded-xl bg-white/95 text-slate-900 placeholder:text-slate-400 text-xs"
+                    className="px-3 py-2 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 text-xs"
                   />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={reqRegion}
+                    onChange={(e) => {
+                      setReqRegion(e.target.value);
+                      setReqCity(GHANA_REGIONS[e.target.value]?.[0] || '');
+                    }}
+                    className="px-2.5 py-2 rounded-xl bg-white text-slate-900 text-xs font-semibold"
+                  >
+                    {REGION_NAMES.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
                   <select
                     value={reqCity}
                     onChange={(e) => setReqCity(e.target.value)}
-                    className="px-2.5 py-2 rounded-xl bg-white/95 text-slate-900 text-xs font-semibold"
+                    className="px-2.5 py-2 rounded-xl bg-white text-slate-900 text-xs font-semibold"
                   >
-                    {CITIES.filter((c) => c !== 'All Ghana').map((c) => (
+                    {(GHANA_REGIONS[reqRegion] || []).map((c) => (
                       <option key={c} value={c}>
                         {c}
                       </option>
@@ -460,7 +593,7 @@ export default function FindItHome() {
           </div>
         )}
 
-        {/* TAB 3: ACCOUNT & MY ADS */}
+        {/* TAB 3: PROFESSIONAL ACCOUNT & MY ADS */}
         {activeTab === 'account' && (
           <div className="space-y-5">
             {!user ? (
@@ -473,6 +606,7 @@ export default function FindItHome() {
                   Create a free individual or business account to post ads, negotiate with buyers, and manage your listings.
                 </p>
                 <button
+                  type="button"
                   onClick={() => setShowAuthModal(true)}
                   className="mt-5 px-6 py-3 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-md"
                 >
@@ -481,35 +615,164 @@ export default function FindItHome() {
               </div>
             ) : (
               <>
-                <div className="p-5 bg-white rounded-3xl border border-slate-200/80 flex items-center justify-between">
-                  <div>
-                    <h2 className="font-bold text-base text-slate-900">
-                      {profile?.full_name || user.email}
-                    </h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {profile?.whatsapp_number} • {profile?.city}
-                    </p>
+                {/* Professional Seller/Buyer Profile Card */}
+                <div className="bg-white rounded-3xl border border-slate-200/80 overflow-hidden shadow-2xs">
+                  <div className="h-16 bg-gradient-to-r from-emerald-600 to-emerald-800" />
+                  <div className="px-5 pb-5">
+                    <div className="flex items-end justify-between -mt-8 mb-3">
+                      <div className="w-16 h-16 rounded-2xl bg-slate-900 text-white border-4 border-white shadow-md flex items-center justify-center text-xl font-extrabold">
+                        {(profile?.full_name || 'U').charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditingProfile(!editingProfile)}
+                          className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          {editingProfile ? 'Cancel' : 'Edit Profile'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSignOut}
+                          className="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition"
+                          title="Sign Out"
+                        >
+                          <LogOut className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {!editingProfile ? (
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h2 className="font-extrabold text-lg text-slate-900">
+                            {profile?.full_name}
+                          </h2>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                            {profile?.account_type === 'business' ? (
+                              <>
+                                <Store className="w-3 h-3" /> Business
+                              </>
+                            ) : (
+                              'Member'
+                            )}
+                          </span>
+                        </div>
+
+                        <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-600">
+                          {profile?.whatsapp_number && (
+                            <span className="flex items-center gap-1.5 font-medium">
+                              <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                              {profile.whatsapp_number}
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                            {profile?.city}
+                            {profile?.neighborhood ? ` - ${profile.neighborhood}` : ''}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <form onSubmit={handleSaveProfile} className="space-y-3 pt-2 border-t border-slate-100">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                            Display Name
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                            WhatsApp / Phone Number
+                          </label>
+                          <input
+                            type="tel"
+                            required
+                            value={editPhone}
+                            onChange={(e) => setEditPhone(e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                              Region
+                            </label>
+                            <select
+                              value={editRegion}
+                              onChange={(e) => {
+                                setEditRegion(e.target.value);
+                                setEditCity(GHANA_REGIONS[e.target.value]?.[0] || '');
+                              }}
+                              className="w-full px-2.5 py-2 rounded-xl border border-slate-200 text-xs font-medium"
+                            >
+                              {REGION_NAMES.map((r) => (
+                                <option key={r} value={r}>
+                                  {r}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                              City / Town
+                            </label>
+                            <select
+                              value={editCity}
+                              onChange={(e) => setEditCity(e.target.value)}
+                              className="w-full px-2.5 py-2 rounded-xl border border-slate-200 text-xs font-medium"
+                            >
+                              {(GHANA_REGIONS[editRegion] || []).map((c) => (
+                                <option key={c} value={c}>
+                                  {c}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={savingProfile}
+                          className="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                        >
+                          <Check className="w-4 h-4" />
+                          {savingProfile ? 'Saving...' : 'Save Profile Changes'}
+                        </button>
+                      </form>
+                    )}
                   </div>
-                  <button
-                    onClick={handleSignOut}
-                    className="p-2.5 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition"
-                    title="Sign Out"
-                  >
-                    <LogOut className="w-4 h-4" />
-                  </button>
                 </div>
 
+                {/* Messages & Negotiations Inbox */}
                 <MessagesInbox currentUserId={user.id} />
 
+                {/* My Active Ads */}
                 <div className="space-y-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 px-1">
-                    My Active Ads ({myListings.length})
-                  </h3>
+                  <div className="flex items-center justify-between px-1">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      My Active Ads ({myListings.length})
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={handleOpenPostAd}
+                      className="text-xs font-bold text-emerald-700 hover:underline"
+                    >
+                      + Post New Ad
+                    </button>
+                  </div>
 
                   {myListings.length === 0 ? (
                     <div className="text-center py-10 bg-white rounded-2xl border border-slate-200/80">
                       <p className="text-xs text-slate-500">You haven&apos;t posted any ads yet.</p>
                       <button
+                        type="button"
                         onClick={handleOpenPostAd}
                         className="mt-3 px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold"
                       >
@@ -532,6 +795,7 @@ export default function FindItHome() {
                           </p>
                         </div>
                         <button
+                          type="button"
                           onClick={() => handleDeleteListing(ad.id)}
                           className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
                           title="Delete Ad"
@@ -548,7 +812,7 @@ export default function FindItHome() {
         )}
       </main>
 
-{/* Bottom Mobile Navigation Bar */}
+      {/* Bottom Mobile Navigation Bar */}
       <nav className="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-3xl mx-auto px-3 h-16 grid grid-cols-4 items-center">
           <button
@@ -609,8 +873,8 @@ export default function FindItHome() {
           isOpen={showPostModal}
           onClose={() => setShowPostModal(false)}
           userId={user.id}
-          defaultCity={profile?.city || 'Accra'}
-          defaultNeighborhood={profile?.neighborhood || ''}
+          defaultRegion={profile?.city || 'Greater Accra Region'}
+          defaultCity={profile?.neighborhood || 'Madina'}
           onSuccess={fetchListings}
         />
       )}
