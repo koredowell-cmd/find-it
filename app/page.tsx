@@ -34,7 +34,16 @@ import {
   Heart,
   SlidersHorizontal,
   Bell,
+  Eye,
+  Headphones,
+  AlertTriangle,
+  Lock,
 } from 'lucide-react';
+
+const SUPPORT_WHATSAPP_NUMBER = '233206583952';
+const SUPPORT_WHATSAPP_URL = `https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${encodeURIComponent(
+  'Hi Find It Support! I need help with my Find It account.'
+)}`;
 
 export default function FindItHome() {
   const [user, setUser] = useState<any>(null);
@@ -52,7 +61,7 @@ export default function FindItHome() {
   const [maxPrice, setMaxPrice] = useState('');
 
   const [listings, setListings] = useState<ListingWithSeller[]>([]);
-  const [myListings, setMyListings] = useState<ListingWithSeller[]>([]);
+  const [myListings, setMyListings] = useState<any[]>([]);
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [savedListings, setSavedListings] = useState<ListingWithSeller[]>([]);
   const [savedSearches, setSavedSearches] = useState<any[]>([]);
@@ -75,6 +84,12 @@ export default function FindItHome() {
   const [editRegion, setEditRegion] = useState('Greater Accra Region');
   const [editCity, setEditCity] = useState('Madina');
   const [savingProfile, setSavingProfile] = useState(false);
+
+  // Account Deletion state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const [reqTitle, setReqTitle] = useState('');
   const [reqVertical, setReqVertical] = useState<'product' | 'service' | 'property'>('product');
@@ -103,7 +118,8 @@ export default function FindItHome() {
           whatsapp_number,
           account_type,
           is_verified
-        )
+        ),
+        saved_listings ( id )
       `)
       .eq('seller_id', uid)
       .order('created_at', { ascending: false });
@@ -479,6 +495,51 @@ export default function FindItHome() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setActiveTab('explore');
+  };
+
+  const handleDeleteAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.email) {
+      setDeleteError('Unable to verify account email. Contact support.');
+      return;
+    }
+    if (!deletePassword.trim()) {
+      setDeleteError('Please enter your password to confirm.');
+      return;
+    }
+
+    setDeletingAccount(true);
+    setDeleteError('');
+
+    // 1. Verify the password used when signing up
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: deletePassword,
+    });
+
+    if (authError) {
+      setDeletingAccount(false);
+      setDeleteError('Incorrect password. Please try again.');
+      return;
+    }
+
+    // 2. Permanently delete all user data and auth record via RPC
+    const { error: rpcError } = await supabase.rpc('delete_own_account');
+
+    if (rpcError) {
+      setDeletingAccount(false);
+      setDeleteError(rpcError.message || 'Could not delete account. Please try again.');
+      return;
+    }
+
+    // 3. Clear local session and redirect to Explore
+    await supabase.auth.signOut();
+    setDeletingAccount(false);
+    setShowDeleteModal(false);
+    setDeletePassword('');
+    setActiveTab('explore');
+    fetchListings();
+    fetchRequests();
   };
 
   const hasActiveBudget = Boolean(minPrice || maxPrice);
@@ -1188,7 +1249,7 @@ export default function FindItHome() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between px-1">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                      My Listings ({myListings.length})
+                      My Listings & Performance ({myListings.length})
                     </h3>
                     <button
                       type="button"
@@ -1214,6 +1275,11 @@ export default function FindItHome() {
                     myListings.map((ad: any) => {
                       const isSold = ad.status === 'sold';
                       const thumb = ad.media_urls?.[0];
+                      const viewsCount = Number(ad.views_count || 0);
+                      const savesCount = Array.isArray(ad.saved_listings)
+                        ? ad.saved_listings.length
+                        : 0;
+                      const leadsCount = Number(ad.leads_count || 0);
 
                       return (
                         <div
@@ -1251,7 +1317,32 @@ export default function FindItHome() {
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                          {/* Ad Performance Stats Bar */}
+                          <div className="grid grid-cols-3 gap-2 py-2 px-2.5 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                            <div>
+                              <p className="text-xs font-extrabold text-slate-900 flex items-center justify-center gap-1">
+                                <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                                {viewsCount}
+                              </p>
+                              <p className="text-[10px] text-slate-500 font-medium">Views</p>
+                            </div>
+                            <div className="border-x border-slate-200/80">
+                              <p className="text-xs font-extrabold text-slate-900 flex items-center justify-center gap-1">
+                                <Heart className="w-3.5 h-3.5 text-rose-500" />
+                                {savesCount}
+                              </p>
+                              <p className="text-[10px] text-slate-500 font-medium">Saves</p>
+                            </div>
+                            <div>
+                              <p className="text-xs font-extrabold text-slate-900 flex items-center justify-center gap-1">
+                                <MessageCircle className="w-3.5 h-3.5 text-amber-600" />
+                                {leadsCount}
+                              </p>
+                              <p className="text-[10px] text-slate-500 font-medium">Inquiries</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-1">
                             <button
                               type="button"
                               onClick={() => setEditingListing(ad)}
@@ -1299,9 +1390,126 @@ export default function FindItHome() {
                 </div>
               </>
             )}
+
+            {/* WhatsApp Support Card (Available for everyone) */}
+            <div className="p-4 bg-white rounded-3xl border border-slate-200/80 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+                  <Headphones className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-xs text-slate-900">Need Help or Have Feedback?</h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Chat directly with Find It Support on WhatsApp.
+                  </p>
+                </div>
+              </div>
+              <a
+                href={SUPPORT_WHATSAPP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shrink-0 transition"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                Support
+              </a>
+            </div>
+
+            {/* Danger Zone: Account Deletion */}
+            {user && (
+              <div className="p-4 bg-white rounded-3xl border border-red-200/80 flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="font-bold text-xs text-red-700">Delete Account</h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Permanently remove your account, ads, and messages.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeletePassword('');
+                    setDeleteError('');
+                    setShowDeleteModal(true);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold shrink-0 transition"
+                >
+                  Delete Account
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>
+
+      {/* Password-Confirmed Account Deletion Modal */}
+      {showDeleteModal && user && (
+        <div
+          onClick={() => !deletingAccount && setShowDeleteModal(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 backdrop-blur-sm p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center gap-2.5 text-red-600">
+              <div className="w-10 h-10 rounded-2xl bg-red-50 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-sm text-slate-900">Delete Your Account?</h3>
+                <p className="text-[11px] text-slate-500">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              All your active listings, saved ads, requests, and messages will be permanently deleted. Enter the password you used to sign up to confirm.
+            </p>
+
+            <form onSubmit={handleDeleteAccount} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Account Password
+                </label>
+                <div className="relative">
+                  <Lock className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="password"
+                    required
+                    placeholder="Enter your password..."
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-red-500"
+                  />
+                </div>
+              </div>
+
+              {deleteError && (
+                <p className="text-[11px] font-semibold text-red-600 bg-red-50 px-3 py-2 rounded-xl">
+                  {deleteError}
+                </p>
+              )}
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={deletingAccount}
+                  onClick={() => setShowDeleteModal(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={deletingAccount || !deletePassword.trim()}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold disabled:opacity-50 transition"
+                >
+                  {deletingAccount ? 'Deleting...' : 'Confirm Delete'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <nav className="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-3xl mx-auto px-3 h-16 grid grid-cols-4 items-center">
