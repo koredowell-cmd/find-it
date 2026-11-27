@@ -1,7 +1,12 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 :root {
   color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
 }
 
 body {
@@ -9,15 +14,63 @@ body {
   color: #0f172a;
 }
 
+.dark body {
+  background-color: #020617;
+  color: #f8fafc;
+}
+
 input,
 select,
 textarea {
-  color: #0f172a !important;
+  color: #0f172a;
   background-color: #ffffff;
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+  color: #f8fafc;
+  background-color: #0f172a;
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: #94a3b8 !important;
+  color: #94a3b8;
   opacity: 1;
+}
+
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(18px, -14px, 0) scale(1.06);
+  }
+}
+
+@keyframes floatSlowReverse {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-18px, 16px, 0) scale(1.05);
+  }
+}
+
+.animate-orb-1 {
+  animation: floatSlow 14s ease-in-out infinite;
+}
+
+.animate-orb-2 {
+  animation: floatSlowReverse 18s ease-in-out infinite;
+}
+
+.bg-lively-grid {
+  background-image: radial-gradient(rgba(16, 185, 129, 0.14) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.dark .bg-lively-grid {
+  background-image: radial-gradient(rgba(52, 211, 153, 0.11) 1px, transparent 1px);
+  background-size: 22px 22px;
 }
